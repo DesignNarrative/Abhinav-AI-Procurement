@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models.document_ingestion_log import DocumentIngestionLog
 from app.models.supplier import Supplier
-from app.models.material_master import MaterialMaster
 from app.schemas.document_extraction import DocumentExtractionPayload, ExtractedString, ValidationLogEntry
 from app.services.document_intelligence_service import INGEST_FOLDER, get_ingested_document
 from rapidfuzz import fuzz
@@ -13,7 +12,6 @@ def resolve_entities(db: Session, document_uuid: str, threshold: float = 80.0) -
     """
     Perform entity resolution on the extracted quotation data:
     1. Resolve vendor to database 'suppliers' table using GST (exact) or company name (fuzzy).
-    2. Resolve each line item material name to 'material_master' using name (fuzzy).
     Overwrites the staging JSON file on disk and returns the updated resolved dict.
     """
     log = get_ingested_document(db, document_uuid)
@@ -102,42 +100,6 @@ def resolve_entities(db: Session, document_uuid: str, threshold: float = 80.0) -
             status="PASSED",
             message=f"Successfully resolved vendor to supplier '{resolved_supplier.company_name}' ({resolved_supplier.supplier_code or resolved_supplier.id})."
         ))
-
-    # 2. Resolve Line Items Materials
-    all_materials = db.query(MaterialMaster).all()
-
-    for item in payload.line_items:
-        ext_material_name = item.material_name.value if item.material_name else None
-        if not ext_material_name:
-            continue
-            
-        best_material_score = 0.0
-        best_material = None
-        
-        for m in all_materials:
-            score = fuzz.token_sort_ratio(ext_material_name.lower(), m.material_name.lower())
-            if score > best_material_score:
-                best_material_score = score
-                best_material = m
-                
-        if best_material and best_material_score >= threshold:
-            item.material_id = best_material.id
-            report = payload.validation_summary.semantic_validation
-            report.status = "PASSED"
-            
-            def get_rule_name(l):
-                if isinstance(l, dict):
-                    return l.get("rule_name")
-                return getattr(l, "rule_name", None)
-
-            # Avoid duplicate logs for this item
-            rule_name = f"item_{item.item_index}_entity_resolution"
-            report.logs = [log for log in report.logs if get_rule_name(log) != rule_name]
-            report.logs.append(ValidationLogEntry(
-                rule_name=rule_name,
-                status="PASSED",
-                message=f"Resolved item '{ext_material_name}' to Material '{best_material.material_name}' (ID: {best_material.id}) with similarity {best_material_score:.1f}%"
-            ))
 
     # Save resolved payload back to disk
     try:

@@ -19,6 +19,12 @@ class RFQ(Base):
     site_name = Column(String(255), nullable=False)
     delivery_location = Column(String(255), nullable=False)
     payment_terms = Column(String(255), nullable=True)
+
+    # Optional requirement-context fields carried over from the merged
+    # Requirements module. All nullable for backward compatibility.
+    priority = Column(String(20), nullable=True)
+    required_date = Column(String(50), nullable=True)
+    purpose = Column(Text, nullable=True)
     
     # Draft, Pending Approval, Approved, Sent, Vendor Viewed, Vendor Responded, Quotation Received, Negotiation, Closed, Cancelled
     status = Column(String(50), default="Draft")

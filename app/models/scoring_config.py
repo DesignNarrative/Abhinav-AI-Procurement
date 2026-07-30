@@ -2,21 +2,26 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
+    Numeric,
     Boolean,
-    DateTime,
-    ForeignKey,
-    Text
+    DateTime
 )
 
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database.database import Base
 
 
-class MaterialSubCategory(Base):
+class ScoringConfig(Base):
+    """
+    Configurable weights for the quotation comparison scoring engine.
+    One row per criteria. Weights are percentages and should sum to 100.
 
-    __tablename__ = "material_subcategories"
+    Default criteria seeded on first use:
+        price 40, quality 20, delivery 15,
+        payment_terms 10, vendor_rating 10, risk 5
+    """
+    __tablename__ = "scoring_config"
 
     id = Column(
         Integer,
@@ -24,36 +29,22 @@ class MaterialSubCategory(Base):
         index=True
     )
 
-    subcategory_code = Column(
-        String(20),
+    criteria_name = Column(
+        String(50),
         unique=True,
-        nullable=False
-    )
-
-    category_id = Column(
-        Integer,
-        ForeignKey("material_categories.id"),
-        nullable=False
-    )
-
-    subcategory_name = Column(
-        String(100),
         nullable=False,
         index=True
     )
 
-    description = Column(
-        Text,
-        nullable=True
+    weight = Column(
+        Numeric(5, 2),
+        nullable=False,
+        default=0.0
     )
 
     is_active = Column(
         Boolean,
         default=True
-    )
-
-    category = relationship(
-        "MaterialCategory"
     )
 
     created_at = Column(

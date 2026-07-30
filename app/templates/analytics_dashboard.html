@@ -1,0 +1,177 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Analytics &amp; Reports</h2>
+            <p class="text-muted mb-0">Spend, savings, turnaround and price intelligence</p>
+        </div>
+        <a href="/analytics/reports/export" class="btn btn-success">
+            <i class="bi bi-file-earmark-excel me-1"></i> Export to Excel
+        </a>
+    </div>
+
+    <!-- Headline cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Negotiation Savings</div>
+                    <div class="fs-3 fw-bold text-success">
+                        ₹{{ "{:,.2f}".format(reports.negotiation_savings.total_saving) }}
+                    </div>
+                    <div class="small text-muted">
+                        across {{ reports.negotiation_savings.rounds_with_saving }} round(s)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Avg RFQ Turnaround</div>
+                    <div class="fs-3 fw-bold">
+                        {{ reports.rfq_turnaround.avg_turnaround_days }} <span class="fs-6">days</span>
+                    </div>
+                    <div class="small text-muted">
+                        {{ reports.rfq_turnaround.awarded_rfqs }} awarded RFQ(s)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Material Research</div>
+                    <div class="input-group mt-2">
+                        <input type="text" class="form-control" id="researchInput"
+                               placeholder="e.g. TMT Steel Bar Fe500">
+                        <button class="btn btn-primary" id="researchBtn">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="researchResult" class="mb-4"></div>
+
+    <div class="row g-4">
+        <!-- Spend by project -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white"><h5 class="fw-bold mb-0">Spend by Project</h5></div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light"><tr><th>Project</th><th class="text-center">POs</th><th class="text-end">Spend</th></tr></thead>
+                        <tbody>
+                        {% for r in reports.spend_by_project %}
+                            <tr><td>{{ r.project_name }}</td><td class="text-center">{{ r.po_count }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.total_spend) }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-muted text-center py-3">No PO data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spend by vendor -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white"><h5 class="fw-bold mb-0">Spend by Vendor</h5></div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light"><tr><th>Vendor</th><th class="text-center">POs</th><th class="text-end">Spend</th></tr></thead>
+                        <tbody>
+                        {% for r in reports.spend_by_vendor %}
+                            <tr><td>{{ r.vendor_name }}</td><td class="text-center">{{ r.po_count }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.total_spend) }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-muted text-center py-3">No PO data yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spend by category -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white"><h5 class="fw-bold mb-0">Spend by Category</h5></div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light"><tr><th>Category</th><th class="text-center">Items</th><th class="text-end">Spend</th></tr></thead>
+                        <tbody>
+                        {% for r in reports.spend_by_category %}
+                            <tr><td>{{ r.category }}</td><td class="text-center">{{ r.item_count }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.total_spend) }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-muted text-center py-3">No PO items yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Price intelligence -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white"><h5 class="fw-bold mb-0">Price Intelligence</h5></div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light"><tr><th>Material</th><th class="text-center">Buys</th><th class="text-end">Avg</th><th class="text-end">Min</th><th class="text-end">Max</th></tr></thead>
+                        <tbody>
+                        {% for r in price_intelligence %}
+                            <tr><td>{{ r.material_name }}</td><td class="text-center">{{ r.purchase_count }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.avg_price) }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.min_price) }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(r.max_price) }}</td></tr>
+                        {% else %}
+                            <tr><td colspan="5" class="text-muted text-center py-3">No purchase history yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("researchBtn").addEventListener("click", async () => {
+    const name = document.getElementById("researchInput").value.trim();
+    const box = document.getElementById("researchResult");
+    if (!name) { return; }
+    box.innerHTML = '<div class="text-muted"><i class="bi bi-hourglass-split"></i> Researching...</div>';
+    const res = await fetch("/analytics/material-research?material_name=" + encodeURIComponent(name));
+    const d = await res.json();
+    if (d.error) {
+        box.innerHTML = '<div class="alert alert-warning">' + d.error + '</div>';
+        return;
+    }
+    box.innerHTML = `
+        <div class="card shadow-sm border-0 rounded-4">
+          <div class="card-body">
+            <h5 class="fw-bold">${d.material_name || name}
+                <span class="badge bg-secondary ms-1">${d.category || '-'}</span></h5>
+            <p class="mb-1"><strong>Usage:</strong> ${d.typical_usage || '-'}</p>
+            <p class="mb-1"><strong>Common brands:</strong> ${(d.common_brands || []).join(', ') || '-'}</p>
+            <p class="mb-1"><strong>Alternatives:</strong> ${(d.alternatives || []).join(', ') || '-'}</p>
+            <p class="mb-1"><strong>Market price:</strong> ${d.market_price_range || '-'}</p>
+            <p class="mb-1"><strong>Typical GST:</strong> ${d.typical_gst_percent != null ? d.typical_gst_percent + '%' : '-'}</p>
+            ${d.notes ? '<p class="text-muted small mb-0">' + d.notes + '</p>' : ''}
+            <div class="text-muted small mt-2">Source: ${d.source}</div>
+          </div>
+        </div>`;
+});
+</script>
+{% endblock %}

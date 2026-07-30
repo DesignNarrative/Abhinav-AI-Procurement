@@ -1,0 +1,96 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}ERP Sync{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">ERP Sync Queue</h2>
+            <p class="text-muted mb-0">
+                Active connector:
+                <span class="badge bg-dark">{{ connector }}</span>
+                {% if connector == "noop" %}
+                <span class="text-muted small">(no ERP configured yet — entries are acknowledged locally)</span>
+                {% endif %}
+            </p>
+        </div>
+        <button class="btn btn-primary" id="processBtn">
+            <i class="bi bi-arrow-repeat me-1"></i> Process Pending
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if entries %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Entity</th>
+                        <th>Entity ID</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Attempts</th>
+                        <th>ERP Reference</th>
+                        <th>Last Error</th>
+                        <th>Synced At</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in entries %}
+                    <tr>
+                        <td class="fw-semibold">{{ e.entity_type }}</td>
+                        <td>{{ e.entity_id }}</td>
+                        <td class="text-center">
+                            {% set s = e.status %}
+                            <span class="badge
+                                {% if s == 'SYNCED' %}bg-success
+                                {% elif s == 'FAILED' %}bg-danger
+                                {% else %}bg-warning text-dark{% endif %}">{{ s }}</span>
+                        </td>
+                        <td class="text-center">{{ e.attempt_count }}</td>
+                        <td class="small text-muted">{{ e.erp_reference or "-" }}</td>
+                        <td class="small text-danger">{{ e.last_error or "-" }}</td>
+                        <td class="small">{{ e.synced_at or "-" }}</td>
+                        <td class="text-end">
+                            {% if e.status != 'SYNCED' %}
+                            <button class="btn btn-sm btn-outline-primary retry-btn" data-id="{{ e.id }}">
+                                <i class="bi bi-arrow-clockwise"></i> Retry
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-cloud-arrow-up fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">Nothing queued yet. Use "Sync to ERP" on any entity page.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("processBtn").addEventListener("click", async () => {
+    const res = await fetch("/erp-sync/process", {method: "POST"});
+    const data = await res.json();
+    if (!res.ok) { alert(data.detail || "Failed."); return; }
+    alert("Processed: " + data.processed + ", synced: " + data.synced + ", failed: " + data.failed);
+    location.reload();
+});
+
+document.querySelectorAll(".retry-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const res = await fetch("/erp-sync/" + id + "/retry", {method: "POST"});
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || "Failed."); return; }
+        location.reload();
+    });
+});
+</script>
+{% endblock %}

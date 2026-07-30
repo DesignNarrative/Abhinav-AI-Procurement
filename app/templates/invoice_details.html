@@ -1,0 +1,369 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ invoice.invoice_number }} — Invoice{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">{{ invoice.invoice_number }}</h2>
+            <p class="text-muted mb-0">
+                {{ vendor.company_name if vendor else "Vendor" }}
+                &mdash;
+                {% set s = invoice.status %}
+                <span class="badge
+                    {% if s == 'Received' %}bg-secondary
+                    {% elif s == 'Verified' %}bg-info text-dark
+                    {% elif s == 'Mismatch' %}bg-danger
+                    {% elif s == 'Approved' %}bg-primary
+                    {% elif s == 'Paid' %}bg-success
+                    {% else %}bg-light text-dark{% endif %}">{{ s }}</span>
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/dashboard/invoices" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            {% if po %}
+            <button class="btn btn-outline-primary" id="runMatchBtn">
+                <i class="bi bi-check2-square me-1"></i> Run 3-Way Match
+            </button>
+            {% endif %}
+            <button class="btn btn-outline-info" id="erpSyncBtn">
+                <i class="bi bi-cloud-arrow-up me-1"></i> Sync to ERP
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+
+            <!-- 3-way match result -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-shield-check text-primary me-2"></i>3-Way Match</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        Status:
+                        {% set m = invoice.match_status %}
+                        <span class="badge
+                            {% if m == 'Matched' %}bg-success
+                            {% elif m == 'Mismatch' %}bg-danger
+                            {% else %}bg-light text-dark border{% endif %}">{{ m }}</span>
+                    </div>
+                    <div id="matchNotes" class="small text-muted">
+                        {{ invoice.match_notes or "Not yet checked." }}
+                    </div>
+                    {% if not po %}
+                    <div class="alert alert-warning small mt-3 mb-0">
+                        No Purchase Order linked to this invoice — a 3-way match cannot be run.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Invoice items -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-list-ul text-primary me-2"></i>Invoice Items</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">Qty</th>
+                                <th class="text-end">Rate</th>
+                                <th class="text-end">GST%</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for it in items %}
+                            <tr>
+                                <td>{{ it.material_name }}</td>
+                                <td class="text-end">{{ it.invoiced_quantity }} {{ it.unit or "" }}</td>
+                                <td class="text-end">₹{{ "%.2f"|format(it.rate) }}</td>
+                                <td class="text-end">{{ it.tax_percent }}</td>
+                                <td class="text-end fw-semibold">₹{{ "%,.2f"|format(it.amount) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-muted text-center">No line items captured — header amounts only.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Payments -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-cash-coin text-primary me-2"></i>Payments</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#paymentModal">
+                        <i class="bi bi-plus-circle me-1"></i> Schedule Payment
+                    </button>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Type</th>
+                                <th class="text-end">Amount</th>
+                                <th>Due</th>
+                                <th>Paid</th>
+                                <th class="text-center">Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsBody">
+                            {% for p in payments %}
+                            <tr>
+                                <td>{{ p.payment_type }}</td>
+                                <td class="text-end">₹{{ "%,.2f"|format(p.amount) }}</td>
+                                <td>{{ p.due_date or "-" }}</td>
+                                <td>{{ p.paid_date or "-" }}</td>
+                                <td class="text-center">
+                                    {% set ps = p.status %}
+                                    <span class="badge
+                                        {% if ps == 'Paid' %}bg-success
+                                        {% elif ps == 'Overdue' %}bg-danger
+                                        {% elif ps == 'Due' %}bg-warning text-dark
+                                        {% elif ps == 'Partial' %}bg-info text-dark
+                                        {% else %}bg-secondary{% endif %}">{{ ps }}</span>
+                                </td>
+                                <td class="text-end">
+                                    {% if p.status != 'Paid' %}
+                                    <button class="btn btn-sm btn-outline-success mark-paid-btn" data-id="{{ p.id }}">
+                                        <i class="bi bi-check2"></i> Mark Paid
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-muted text-center">No payments scheduled.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-receipt text-primary me-2"></i>Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-muted">Taxable</span>
+                        <span>₹{{ "%,.2f"|format(invoice.taxable_amount) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-muted">Total Tax</span>
+                        <span>₹{{ "%,.2f"|format(invoice.total_tax_amount) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between fw-bold border-top pt-2">
+                        <span>Invoice Total</span>
+                        <span class="text-success">₹{{ "%,.2f"|format(invoice.invoice_amount) }}</span>
+                    </div>
+                    <hr>
+                    <div class="text-muted small">Invoice Date: {{ invoice.invoice_date or "-" }}</div>
+                    {% if po %}
+                    <div class="text-muted small mt-1">
+                        PO: <a href="/dashboard/purchase-orders/{{ po.id }}">{{ po.po_number }}</a>
+                        (₹{{ "%,.2f"|format(po.grand_total) }})
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-arrow-repeat text-primary me-2"></i>Update Status</h5>
+                </div>
+                <div class="card-body">
+                    <select class="form-select mb-2" id="statusSelect">
+                        {% for st in ["Received","Verified","Mismatch","Approved","Paid"] %}
+                        <option value="{{ st }}" {% if invoice.status == st %}selected{% endif %}>{{ st }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" class="form-control mb-2" id="approvedBy" placeholder="Approved by (for Approved)">
+                    <button class="btn btn-primary w-100" id="saveStatusBtn">
+                        <i class="bi bi-save me-1"></i> Save Status
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Schedule Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Schedule Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Type</label>
+                        <select class="form-select" id="payType">
+                            {% for t in ["Full","Advance","50%","Part","Credit"] %}
+                            <option value="{{ t }}">{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Amount</label>
+                        <input type="number" step="0.01" class="form-control" id="payAmount" value="0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Due Date <span class="text-muted">(auto if blank)</span></label>
+                        <input type="date" class="form-control" id="payDue">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Recorded By *</label>
+                        <input type="text" class="form-control" id="payBy" placeholder="Your name">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold">Remarks</label>
+                        <input type="text" class="form-control" id="payRemarks">
+                    </div>
+                </div>
+                <div id="payError" class="text-danger small mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" id="savePaymentBtn">
+                    <i class="bi bi-floppy me-1"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="invoiceData" type="application/json">
+{"id": {{ invoice.id }}}
+</script>
+
+<script>
+const INVOICE_ID = JSON.parse(document.getElementById("invoiceData").textContent).id;
+
+// Sync to ERP
+const erpSyncBtn = document.getElementById("erpSyncBtn");
+if (erpSyncBtn) {
+    fetch("/erp-sync/status/Invoice/" + INVOICE_ID)
+        .then(r => r.json())
+        .then(d => {
+            if (d.status === "SYNCED") {
+                erpSyncBtn.classList.remove("btn-outline-info");
+                erpSyncBtn.classList.add("btn-outline-success");
+                erpSyncBtn.innerHTML = '<i class="bi bi-cloud-check me-1"></i> Synced to ERP';
+            } else if (d.status === "FAILED") {
+                erpSyncBtn.classList.remove("btn-outline-info");
+                erpSyncBtn.classList.add("btn-outline-danger");
+                erpSyncBtn.innerHTML = '<i class="bi bi-cloud-slash me-1"></i> Retry ERP Sync';
+            }
+        });
+    erpSyncBtn.addEventListener("click", async () => {
+        erpSyncBtn.disabled = true;
+        const res = await fetch("/erp-sync/enqueue-and-push", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({entity_type: "Invoice", entity_id: INVOICE_ID})
+        });
+        const data = await res.json();
+        erpSyncBtn.disabled = false;
+        if (!res.ok) { alert(data.detail || "ERP sync failed."); return; }
+        alert(data.status === "SYNCED"
+            ? "Synced to ERP. Reference: " + (data.erp_reference || "-")
+            : "ERP sync " + data.status + (data.last_error ? ": " + data.last_error : ""));
+        location.reload();
+    });
+}
+
+// Run 3-way match
+const matchBtn = document.getElementById("runMatchBtn");
+if (matchBtn) {
+    matchBtn.addEventListener("click", async () => {
+        matchBtn.disabled = true;
+        try {
+            const res = await fetch("/invoices/" + INVOICE_ID + "/match", {method: "POST"});
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.detail || "Match failed.");
+                return;
+            }
+            location.reload();
+        } catch (e) {
+            alert("Network error: " + e);
+        } finally {
+            matchBtn.disabled = false;
+        }
+    });
+}
+
+// Update status
+document.getElementById("saveStatusBtn").addEventListener("click", async () => {
+    const payload = {
+        status: document.getElementById("statusSelect").value,
+        approved_by: document.getElementById("approvedBy").value.trim() || null
+    };
+    const res = await fetch("/invoices/" + INVOICE_ID + "/status", {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.detail || "Failed."); return; }
+    location.reload();
+});
+
+// Schedule payment
+document.getElementById("savePaymentBtn").addEventListener("click", async () => {
+    const err = document.getElementById("payError");
+    err.textContent = "";
+    const by = document.getElementById("payBy").value.trim();
+    if (!by) { err.textContent = "Recorded By is required."; return; }
+
+    const due = document.getElementById("payDue").value;
+    const payload = {
+        invoice_id: INVOICE_ID,
+        payment_type: document.getElementById("payType").value,
+        amount: parseFloat(document.getElementById("payAmount").value) || 0,
+        due_date: due || null,
+        remarks: document.getElementById("payRemarks").value.trim() || null,
+        created_by: by
+    };
+    const res = await fetch("/payments", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.detail || "Failed."; return; }
+    location.reload();
+});
+
+// Mark paid
+document.querySelectorAll(".mark-paid-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const res = await fetch("/payments/" + id + "/mark-paid", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || "Failed."); return; }
+        location.reload();
+    });
+});
+</script>
+{% endblock %}

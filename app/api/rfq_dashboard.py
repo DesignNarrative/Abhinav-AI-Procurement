@@ -97,3 +97,26 @@ def rfq_details(
             "enriched_vendors": enriched_vendors
         }
     )
+
+
+@router.get("/{rfq_id}/comparison", response_class=HTMLResponse)
+def rfq_comparison(
+    rfq_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Side-by-side quotation comparison + award page for an RFQ."""
+    from app.services.comparison_service import ComparisonService
+
+    comparison = ComparisonService.build_comparison(db, rfq_id)
+    if comparison is None:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="rfq_comparison.html",
+        context={
+            "request": request,
+            "comparison": comparison
+        }
+    )

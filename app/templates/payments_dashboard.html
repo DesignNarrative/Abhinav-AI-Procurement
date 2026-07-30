@@ -1,0 +1,120 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Payments{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Payments</h2>
+            <p class="text-muted mb-0">Outstanding &amp; overdue vendor payments</p>
+        </div>
+        <a href="/dashboard/invoices" class="btn btn-outline-secondary">
+            <i class="bi bi-receipt me-1"></i> Invoices
+        </a>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-body">
+                    <div class="text-muted small">Outstanding Total</div>
+                    <div class="fs-4 fw-bold">₹{{ "{:,.2f}".format(summary.outstanding_total) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4 border-start border-danger border-4">
+                <div class="card-body">
+                    <div class="text-muted small">Overdue ({{ summary.overdue_count }})</div>
+                    <div class="fs-4 fw-bold text-danger">₹{{ "{:,.2f}".format(summary.overdue_total) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-4 border-start border-warning border-4">
+                <div class="card-body">
+                    <div class="text-muted small">Due Soon ({{ summary.due_soon_count }})</div>
+                    <div class="fs-4 fw-bold text-warning">₹{{ "{:,.2f}".format(summary.due_soon_total) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if payments %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Vendor</th>
+                        <th>Invoice</th>
+                        <th>PO</th>
+                        <th>Type</th>
+                        <th class="text-end">Amount</th>
+                        <th>Due Date</th>
+                        <th class="text-center">Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payments %}
+                    <tr>
+                        <td>{{ p.vendor_name or "-" }}</td>
+                        <td>
+                            {% if p.invoice_id %}
+                            <a href="/dashboard/invoices/{{ p.invoice_id }}">{{ p.invoice_number or p.invoice_id }}</a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ p.po_number or "-" }}</td>
+                        <td>{{ p.payment_type }}</td>
+                        <td class="text-end fw-semibold">₹{{ "{:,.2f}".format(p.amount) }}</td>
+                        <td>{{ p.due_date or "-" }}</td>
+                        <td class="text-center">
+                            {% set ps = p.status %}
+                            <span class="badge
+                                {% if ps == 'Paid' %}bg-success
+                                {% elif ps == 'Overdue' %}bg-danger
+                                {% elif ps == 'Due' %}bg-warning text-dark
+                                {% elif ps == 'Partial' %}bg-info text-dark
+                                {% else %}bg-secondary{% endif %}">{{ ps }}</span>
+                        </td>
+                        <td class="text-end">
+                            {% if p.status != 'Paid' %}
+                            <button class="btn btn-sm btn-outline-success mark-paid-btn" data-id="{{ p.id }}">
+                                <i class="bi bi-check2"></i> Mark Paid
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-cash-stack fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">No payments scheduled yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll(".mark-paid-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const res = await fetch("/payments/" + id + "/mark-paid", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || "Failed."); return; }
+        location.reload();
+    });
+});
+</script>
+{% endblock %}

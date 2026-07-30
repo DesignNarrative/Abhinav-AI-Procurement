@@ -13,4 +13,6 @@ requests
 httpx
 aiofiles
 psycopg2-binary
+apscheduler
 email-validator
+reportlab

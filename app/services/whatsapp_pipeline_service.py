@@ -22,6 +22,7 @@ from app.services.document_intelligence_service import (
 from app.services.entity_resolution_service import resolve_entities
 from app.services.business_validation_service import validate_document_business
 from app.services.quotation_draft_service import create_draft_quotation
+from app.services.invoice_service import InvoiceService
 from app.services.whatsapp_service import send_text_message
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,48 @@ def process_whatsapp_document_pipeline(
     # Trigger Phase 8: Business Validation
     logger.info(f"Running Business Validation for Quotation UUID: {uuid}")
     validate_document_business(db, uuid)
+
+    # INVOICE branch: capture the invoice record instead of drafting a
+    # quotation. Keeps the quotation path below completely unchanged.
+    if doc_type == "INVOICE":
+        logger.info(f"Document UUID {uuid} is an INVOICE. Creating invoice record...")
+        try:
+            invoice = InvoiceService.create_from_extraction(
+                db=db,
+                document_uuid=uuid,
+                vendor_id=supplier.id,
+                created_by="AI_SYSTEM"
+            )
+            send_text_message(
+                sender_phone,
+                f"Dear {supplier.contact_person_name},\n\n"
+                f"Thank you! Your invoice {invoice.invoice_number} has been "
+                f"received and recorded. Our accounts team will verify it "
+                f"against the purchase order and process payment."
+            )
+            return {
+                "status": "processed",
+                "document_uuid": uuid,
+                "document_type": doc_type,
+                "action": "invoice_created",
+                "invoice_id": invoice.id
+            }
+        except Exception as inv_err:
+            logger.error(f"Error creating invoice: {str(inv_err)}", exc_info=True)
+            db.rollback()
+            send_text_message(
+                sender_phone,
+                f"Dear {supplier.contact_person_name},\n\n"
+                f"We received your invoice document but could not record it "
+                f"automatically. Our accounts team will process it manually."
+            )
+            return {
+                "status": "processed",
+                "document_uuid": uuid,
+                "document_type": doc_type,
+                "action": "manual_review_invoice_error",
+                "error": str(inv_err)
+            }
 
     # Trigger Phase 9: Auto-Drafting to DB if active RFQ is resolved
     # Find most recent active RFQ Vendor association

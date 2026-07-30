@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -51,23 +51,20 @@ def requirement_management(
 
 
 # =====================================================
-# Create Requirement Page
+# Create Requirement Page (merged into unified RFQ page)
 # =====================================================
 
 @router.get(
-    "/create",
-    response_class=HTMLResponse
+    "/create"
 )
-def create_requirement_page(
-    request: Request
-):
+def create_requirement_page():
+    """Requirements creation is merged into the unified RFQ page.
 
-    return templates.TemplateResponse(
-        request=request,
-        name="requirement_create.html",
-        context={
-            "request": request
-        }
+    Kept as a permanent redirect so old links/bookmarks keep working.
+    """
+    return RedirectResponse(
+        url="/dashboard/rfq/create",
+        status_code=307
     )
 
 

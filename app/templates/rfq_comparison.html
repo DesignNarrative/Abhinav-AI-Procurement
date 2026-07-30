@@ -1,0 +1,340 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ comparison.rfq_number }} — Quotation Comparison{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Quotation Comparison</h2>
+            <p class="text-muted mb-0">
+                {{ comparison.rfq_number }} &mdash; {{ comparison.project_name }} ({{ comparison.site_name }})
+            </p>
+        </div>
+        <a href="/dashboard/rfq/{{ comparison.rfq_id }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to RFQ
+        </a>
+    </div>
+
+    {% if comparison.award %}
+    <div class="alert alert-success d-flex align-items-center justify-content-between" role="alert">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-trophy-fill me-2 fs-4"></i>
+            <div>
+                <strong>Awarded.</strong>
+                This RFQ was awarded to
+                {% for v in comparison.vendors %}{% if v.vendor_id == comparison.award.vendor_id %}<strong>{{ v.vendor_name }}</strong>{% endif %}{% endfor %}
+                by {{ comparison.award.approved_by }}
+                &mdash; Reason: {{ comparison.award.selection_reason }}
+                {% if comparison.award.remarks %}({{ comparison.award.remarks }}){% endif %}
+            </div>
+        </div>
+        <button class="btn btn-success btn-sm ms-3" id="createPoBtn">
+            <i class="bi bi-file-earmark-plus me-1"></i> Create Purchase Order
+        </button>
+    </div>
+    {% endif %}
+
+    {% if comparison.quotation_count == 0 %}
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-inbox fs-1 text-muted"></i>
+            <p class="text-muted mt-2 mb-0">No quotations received for this RFQ yet.</p>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- AI Recommendation -->
+    {% if comparison.recommendation and not comparison.award %}
+    <div class="card shadow-sm border-0 rounded-4 mb-4 border-start border-4 border-primary">
+        <div class="card-body">
+            <div class="d-flex align-items-start">
+                <i class="bi bi-stars text-primary fs-3 me-3"></i>
+                <div>
+                    <h5 class="fw-bold mb-1">
+                        AI Recommendation: {{ comparison.recommendation.vendor_name }}
+                        <span class="badge bg-primary ms-2">Score {{ comparison.recommendation.total_score }}</span>
+                    </h5>
+                    <ul class="mb-1 small">
+                        {% for reason in comparison.recommendation.reasons %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                    <div class="text-muted small fst-italic">{{ comparison.recommendation.note }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Comparison Matrix -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white">
+            <h5 class="fw-bold mb-0"><i class="bi bi-table text-primary me-2"></i>Item-wise Comparison (Landed Rates)</h5>
+        </div>
+        <div class="card-body table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width:220px;">Material</th>
+                        {% for v in comparison.vendors %}
+                        <th class="text-center" style="min-width:170px;">
+                            {{ v.vendor_name }}
+                            <div class="fw-normal small text-muted">
+                                {{ v.quotation_number }}
+                                {% if v.revision_number > 0 %}(Rev {{ v.revision_number }}){% endif %}
+                            </div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in comparison.items %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ row.material_name }}</div>
+                            <div class="text-muted small">
+                                {{ row.quantity }} {{ row.unit }}
+                                {% if row.brand_required %} &middot; Brand: {{ row.brand_required }}{% endif %}
+                            </div>
+                        </td>
+                        {% for cell in row.cells %}
+                        {% if cell.is_quoted %}
+                        <td class="text-center {% if cell.rank == 'L1' %}table-success{% endif %}">
+                            <div class="fw-bold">₹{{ "%.2f"|format(cell.final_landed_rate) }}</div>
+                            <div class="text-muted small">
+                                Basic ₹{{ "%.2f"|format(cell.basic_rate) }}
+                                {% if cell.discount_percent > 0 %} &middot; Disc {{ cell.discount_percent }}%{% endif %}
+                                &middot; GST {{ cell.tax_percent }}%
+                            </div>
+                            {% if cell.brand_offered %}
+                            <div class="text-muted small">{{ cell.brand_offered }}</div>
+                            {% endif %}
+                            {% if cell.rank %}
+                            <span class="badge {% if cell.rank == 'L1' %}bg-success{% elif cell.rank == 'L2' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ cell.rank }}</span>
+                            {% endif %}
+                        </td>
+                        {% else %}
+                        <td class="text-center text-muted">Not Quoted</td>
+                        {% endif %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+
+                    <!-- Totals row -->
+                    <tr class="table-light">
+                        <td class="fw-bold">Grand Total (incl. freight / loading)</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center fw-bold {% if loop.first %}text-success{% endif %}">
+                            ₹{{ "%,.2f"|format(v.grand_total) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Payment Terms</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center small">{{ v.payment_terms or "-" }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Delivery Timeline</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center small">{{ v.delivery_timeline or "-" }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Weighted Score</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center">
+                            {% for s in comparison.scores %}
+                            {% if s.quotation_id == v.quotation_id %}
+                            <span class="badge {% if comparison.recommendation and comparison.recommendation.quotation_id == v.quotation_id %}bg-primary{% else %}bg-light text-dark border{% endif %} fs-6">
+                                {{ s.total_score }}
+                            </span>
+                            {% endif %}
+                            {% endfor %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% if not comparison.award %}
+                    <tr>
+                        <td class="fw-bold">Select Winner</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-success award-btn"
+                                    data-quotation-id="{{ v.quotation_id }}"
+                                    data-vendor-name="{{ v.vendor_name }}">
+                                <i class="bi bi-trophy me-1"></i> Award
+                            </button>
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Scoring Weights -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0"><i class="bi bi-sliders text-primary me-2"></i>Scoring Weights (must total 100)</h5>
+            <button class="btn btn-sm btn-outline-primary" id="saveWeightsBtn">
+                <i class="bi bi-floppy me-1"></i> Save Weights
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for name, weight in comparison.weights.items() %}
+                <div class="col-md-2 col-6">
+                    <label class="form-label small fw-semibold text-capitalize">{{ name.replace("_", " ") }}</label>
+                    <input type="number" min="0" max="100" step="1"
+                           class="form-control form-control-sm weight-input"
+                           data-criteria="{{ name }}" value="{{ weight|int }}">
+                </div>
+                {% endfor %}
+            </div>
+            <small class="text-muted">Quality, vendor rating and risk stay neutral (50) until vendor performance history builds up.</small>
+        </div>
+    </div>
+
+    {% endif %}
+</div>
+
+<!-- Award Modal -->
+<div class="modal fade" id="awardModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-trophy text-success me-2"></i>Award RFQ to <span id="awardVendorName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Selection Reason</label>
+                    <select class="form-select" id="selectionReason">
+                        <option value="Lowest cost">Lowest cost</option>
+                        <option value="Best value">Best value</option>
+                        <option value="Fastest delivery">Fastest delivery</option>
+                        <option value="Preferred supplier">Preferred supplier</option>
+                        <option value="Emergency">Emergency</option>
+                        <option value="Director approval">Director approval</option>
+                        <option value="Previous relationship">Previous relationship</option>
+                        <option value="Single source">Single source</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Approved By</label>
+                    <input type="text" class="form-control" id="approvedBy" placeholder="Your name">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label fw-semibold">Remarks (optional)</label>
+                    <textarea class="form-control" id="awardRemarks" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmAwardBtn">
+                    <i class="bi bi-check-circle me-1"></i> Confirm Award
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const rfqId = {{ comparison.rfq_id }};
+let selectedQuotationId = null;
+
+// Create Purchase Order from the awarded quotation
+const createPoBtn = document.getElementById('createPoBtn');
+if (createPoBtn) {
+    createPoBtn.addEventListener('click', async () => {
+        const createdBy = prompt('Create Purchase Order. Enter your name:');
+        if (!createdBy || !createdBy.trim()) return;
+        const res = await fetch('/purchase-orders/from-award', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ rfq_id: rfqId, created_by: createdBy.trim() })
+        });
+        if (res.ok) {
+            const po = await res.json();
+            window.location.href = `/dashboard/purchase-orders/${po.id}`;
+        } else {
+            const d = await res.json().catch(() => ({}));
+            alert(d.detail || 'Failed to create Purchase Order.');
+        }
+    });
+}
+
+const awardModalEl = document.getElementById('awardModal');
+const awardModal = awardModalEl ? new bootstrap.Modal(awardModalEl) : null;
+
+document.querySelectorAll('.award-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        selectedQuotationId = parseInt(btn.dataset.quotationId);
+        document.getElementById('awardVendorName').textContent = btn.dataset.vendorName;
+        awardModal.show();
+    });
+});
+
+const confirmBtn = document.getElementById('confirmAwardBtn');
+if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+        const approvedBy = document.getElementById('approvedBy').value.trim();
+        if (!approvedBy) { alert('Please enter who approved this selection.'); return; }
+
+        const res = await fetch(`/rfqs/${rfqId}/award`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                quotation_id: selectedQuotationId,
+                selection_reason: document.getElementById('selectionReason').value,
+                approved_by: approvedBy,
+                remarks: document.getElementById('awardRemarks').value.trim() || null
+            })
+        });
+        if (res.ok) {
+            alert('Vendor awarded successfully.');
+            window.location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.detail || 'Failed to award.');
+        }
+    });
+}
+
+const saveWeightsBtn = document.getElementById('saveWeightsBtn');
+if (saveWeightsBtn) {
+    saveWeightsBtn.addEventListener('click', async () => {
+        const weights = {};
+        let total = 0;
+        document.querySelectorAll('.weight-input').forEach(inp => {
+            const w = parseFloat(inp.value) || 0;
+            weights[inp.dataset.criteria] = w;
+            total += w;
+        });
+        if (Math.round(total) !== 100) {
+            alert(`Weights must total 100 (currently ${total}).`);
+            return;
+        }
+        const res = await fetch('/scoring-config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ weights })
+        });
+        if (res.ok) {
+            alert('Weights saved. Scores recalculated.');
+            window.location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.detail || 'Failed to save weights.');
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -31,6 +31,9 @@ def generate_rfq_whatsapp_message(
     deadline: Optional[str] = None,
     contact_person: Optional[str] = None,
     contact_number: Optional[str] = None,
+    priority: Optional[str] = None,
+    required_date: Optional[str] = None,
+    purpose: Optional[str] = None,
 ) -> str:
     """
     Generates a professional, intelligent WhatsApp RFQ message.
@@ -54,6 +57,12 @@ def generate_rfq_whatsapp_message(
     if site_name:
         lines.append(f"*Site:* {site_name}")
     lines.append(f"*Delivery Location:* {delivery_location}")
+    if priority:
+        lines.append(f"*Priority:* {priority}")
+    if required_date:
+        lines.append(f"*Required By:* {required_date}")
+    if purpose:
+        lines.append(f"*Purpose:* {purpose}")
     lines.append("")
 
     # ── Items ──

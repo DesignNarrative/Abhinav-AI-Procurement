@@ -1,0 +1,78 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Purchase Orders{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Purchase Orders</h2>
+            <p class="text-muted mb-0">Generated from awarded quotations</p>
+        </div>
+        <a href="/dashboard/rfq" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> RFQs
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if rows %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>PO Number</th>
+                        <th>Vendor</th>
+                        <th>PO Date</th>
+                        <th class="text-end">Grand Total</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">WhatsApp</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td class="fw-semibold text-primary">{{ row.po.po_number }}</td>
+                        <td>{{ row.vendor_name }}</td>
+                        <td>{{ row.po.po_date.strftime("%d-%b-%Y") if row.po.po_date else "-" }}</td>
+                        <td class="text-end fw-bold">₹{{ "%,.2f"|format(row.po.grand_total) }}</td>
+                        <td class="text-center">
+                            {% set s = row.po.status %}
+                            <span class="badge
+                                {% if s == 'Draft' %}bg-secondary
+                                {% elif s == 'Pending Approval' %}bg-warning text-dark
+                                {% elif s == 'Approved' %}bg-info text-dark
+                                {% elif s == 'Sent' %}bg-primary
+                                {% elif s == 'Accepted' %}bg-success
+                                {% elif s == 'Rejected' %}bg-danger
+                                {% elif s == 'Cancelled' %}bg-danger
+                                {% elif s == 'Closed' %}bg-dark
+                                {% else %}bg-light text-dark{% endif %}">{{ s }}</span>
+                        </td>
+                        <td class="text-center">
+                            {% if row.po.whatsapp_status == "Sent" %}
+                                <span class="badge bg-success">Sent</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="/dashboard/purchase-orders/{{ row.po.id }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-file-earmark-text fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">No purchase orders yet. Award an RFQ and create a PO from it.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

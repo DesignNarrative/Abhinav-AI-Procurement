@@ -1,0 +1,525 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ po.po_number }} — Purchase Order{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">{{ po.po_number }}</h2>
+            <p class="text-muted mb-0">
+                {{ vendor.company_name if vendor else "Vendor" }}
+                &mdash;
+                {% set s = po.status %}
+                <span class="badge
+                    {% if s == 'Draft' %}bg-secondary
+                    {% elif s == 'Pending Approval' %}bg-warning text-dark
+                    {% elif s == 'Approved' %}bg-info text-dark
+                    {% elif s == 'Sent' %}bg-primary
+                    {% elif s == 'Accepted' %}bg-success
+                    {% elif s == 'Rejected' %}bg-danger
+                    {% elif s == 'Cancelled' %}bg-danger
+                    {% elif s == 'Closed' %}bg-dark
+                    {% else %}bg-light text-dark{% endif %}">{{ s }}</span>
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/dashboard/purchase-orders" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <button class="btn btn-outline-primary" id="genPdfBtn">
+                <i class="bi bi-file-earmark-pdf me-1"></i> Generate PDF
+            </button>
+            {% if po.pdf_path %}
+            <a href="/{{ po.pdf_path }}" target="_blank" class="btn btn-outline-dark">
+                <i class="bi bi-download me-1"></i> View PDF
+            </a>
+            {% endif %}
+            {% if po.status in ["Approved", "Sent"] %}
+            <button class="btn btn-success" id="sendPoBtn">
+                <i class="bi bi-whatsapp me-1"></i> Send to Vendor
+            </button>
+            {% endif %}
+            <button class="btn btn-outline-info" id="erpSyncBtn">
+                <i class="bi bi-cloud-arrow-up me-1"></i> Sync to ERP
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+
+            <!-- Items -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-boxes text-primary me-2"></i>Ordered Items</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">Qty</th>
+                                <th class="text-end">Rate</th>
+                                <th class="text-end">Disc%</th>
+                                <th class="text-end">GST%</th>
+                                <th class="text-end">Landed</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for it in items %}
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ it.material_name }}</div>
+                                    <div class="text-muted small">
+                                        {% if it.brand %}Brand: {{ it.brand }}{% endif %}
+                                    </div>
+                                </td>
+                                <td class="text-end">{{ it.ordered_quantity }} {{ it.unit }}</td>
+                                <td class="text-end">₹{{ "%.2f"|format(it.basic_rate) }}</td>
+                                <td class="text-end">{{ it.discount_percent }}</td>
+                                <td class="text-end">{{ it.tax_percent }}</td>
+                                <td class="text-end">₹{{ "%.2f"|format(it.final_landed_rate) }}</td>
+                                <td class="text-end fw-semibold">₹{{ "%,.2f"|format(it.total_amount) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-muted text-center">No items.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="6" class="text-end text-muted">Freight Total</td>
+                                <td class="text-end">₹{{ "%,.2f"|format(po.freight_total) }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="6" class="text-end text-muted">Loading / Unloading</td>
+                                <td class="text-end">₹{{ "%,.2f"|format(po.loading_unloading_total) }}</td>
+                            </tr>
+                            <tr class="table-light">
+                                <td colspan="6" class="text-end fw-bold">Grand Total</td>
+                                <td class="text-end fw-bold text-success">₹{{ "%,.2f"|format(po.grand_total) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Editable details (Draft only) -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-pencil-square text-primary me-2"></i>PO Details</h5>
+                    {% if po.status == "Draft" %}
+                    <button class="btn btn-sm btn-outline-primary" id="saveDetailsBtn">
+                        <i class="bi bi-floppy me-1"></i> Save
+                    </button>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% set editable = po.status == "Draft" %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Site Name</label>
+                            <input type="text" class="form-control" id="siteName" value="{{ po.site_name or '' }}" {{ '' if editable else 'disabled' }}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Payment Terms</label>
+                            <input type="text" class="form-control" id="paymentTerms" value="{{ po.payment_terms or '' }}" {{ '' if editable else 'disabled' }}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Contact Person</label>
+                            <input type="text" class="form-control" id="contactPerson" value="{{ po.contact_person or '' }}" {{ '' if editable else 'disabled' }}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Contact Number</label>
+                            <input type="text" class="form-control" id="contactNumber" value="{{ po.contact_number or '' }}" {{ '' if editable else 'disabled' }}>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Delivery Timeline</label>
+                            <input type="text" class="form-control" id="deliveryTimeline" value="{{ po.delivery_timeline or '' }}" {{ '' if editable else 'disabled' }}>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">Billing Address</label>
+                            <textarea class="form-control" id="billingAddress" rows="2" {{ '' if editable else 'disabled' }}>{{ po.billing_address or '' }}</textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">Shipping Address</label>
+                            <textarea class="form-control" id="shippingAddress" rows="2" {{ '' if editable else 'disabled' }}>{{ po.shipping_address or '' }}</textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">Penalty Terms</label>
+                            <textarea class="form-control" id="penaltyTerms" rows="2" {{ '' if editable else 'disabled' }}>{{ po.penalty_terms or '' }}</textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-semibold">Terms &amp; Conditions</label>
+                            <textarea class="form-control" id="termsConditions" rows="3" {{ '' if editable else 'disabled' }}>{{ po.terms_conditions or '' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delivery & GRN -->
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-truck text-primary me-2"></i>Delivery &amp; GRN</h5>
+                    <button class="btn btn-sm btn-primary" id="addDeliveryBtn">
+                        <i class="bi bi-plus-circle me-1"></i> Record Dispatch
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="receiptSummary" class="mb-3"></div>
+                    <div id="deliveryTimeline">
+                        <p class="text-muted small mb-0">Loading deliveries...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column: vendor + status -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 rounded-4 mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-shop text-primary me-2"></i>Vendor</h5>
+                </div>
+                <div class="card-body">
+                    <div class="fw-semibold">{{ vendor.company_name if vendor else "-" }}</div>
+                    <div class="text-muted small">GSTIN: {{ vendor.gst_number if vendor else "-" }}</div>
+                    <div class="text-muted small">📞 {{ vendor.whatsapp_number if vendor else "-" }}</div>
+                    <div class="text-muted small mt-2">{{ vendor.registered_address if vendor else "" }}</div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-arrow-repeat text-primary me-2"></i>Update Status</h5>
+                </div>
+                <div class="card-body">
+                    <select class="form-select mb-2" id="statusSelect">
+                        {% for st in ["Draft","Pending Approval","Approved","Sent","Accepted","Rejected","Cancelled","Closed"] %}
+                        <option value="{{ st }}" {% if po.status == st %}selected{% endif %}>{{ st }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" class="form-control mb-2" id="approvedBy" placeholder="Approved by (for Approved status)">
+                    <button class="btn btn-primary w-100" id="updateStatusBtn">Update Status</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Record Dispatch Modal -->
+<div class="modal fade" id="deliveryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-truck text-primary me-2"></i>Record Dispatch</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Dispatch Date</label>
+                        <input type="date" class="form-control" id="dispatchDate">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">ETA</label>
+                        <input type="date" class="form-control" id="deliveryEta">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Vehicle Number</label>
+                        <input type="text" class="form-control" id="vehicleNumber">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Status</label>
+                        <select class="form-select" id="deliveryStatus">
+                            <option value="Dispatched">Dispatched</option>
+                            <option value="In Transit">In Transit</option>
+                            <option value="Delivered">Delivered</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Driver Name</label>
+                        <input type="text" class="form-control" id="driverName">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Driver Number</label>
+                        <input type="text" class="form-control" id="driverNumber">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold">Recorded By</label>
+                        <input type="text" class="form-control" id="deliveryCreatedBy" placeholder="Your name">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold">Remarks</label>
+                        <textarea class="form-control" id="deliveryRemarks" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveDeliveryBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GRN Modal -->
+<div class="modal fade" id="grnModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-clipboard-check text-success me-2"></i>Goods Receipt Note (GRN)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Confirmed By (Site Engineer)</label>
+                    <input type="text" class="form-control" id="grnConfirmedBy" placeholder="Your name">
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Material</th>
+                                <th class="text-end">Ordered</th>
+                                <th class="text-end">Received Now</th>
+                                <th class="text-center">Quality OK</th>
+                                <th>Damage Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="grnItemsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="saveGrnBtn">Confirm Receipt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script id="poItemsData" type="application/json">
+[{% for it in items %}{"po_item_id": {{ it.id }}, "material_name": {{ it.material_name|tojson }}, "unit": {{ it.unit|tojson }}, "ordered_quantity": {{ it.ordered_quantity }}}{% if not loop.last %},{% endif %}{% endfor %}]
+</script>
+
+<script>
+const poId = {{ po.id }};
+const poItems = JSON.parse(document.getElementById('poItemsData').textContent);
+
+// ===================== ERP Sync =====================
+const erpSyncBtn = document.getElementById('erpSyncBtn');
+if (erpSyncBtn) {
+    fetch(`/erp-sync/status/PurchaseOrder/${poId}`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.status === 'SYNCED') {
+                erpSyncBtn.classList.remove('btn-outline-info');
+                erpSyncBtn.classList.add('btn-outline-success');
+                erpSyncBtn.innerHTML = '<i class="bi bi-cloud-check me-1"></i> Synced to ERP';
+            } else if (d.status === 'FAILED') {
+                erpSyncBtn.classList.remove('btn-outline-info');
+                erpSyncBtn.classList.add('btn-outline-danger');
+                erpSyncBtn.innerHTML = '<i class="bi bi-cloud-slash me-1"></i> Retry ERP Sync';
+            }
+        });
+    erpSyncBtn.addEventListener('click', async () => {
+        erpSyncBtn.disabled = true;
+        const res = await fetch('/erp-sync/enqueue-and-push', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({entity_type: 'PurchaseOrder', entity_id: poId})
+        });
+        const data = await res.json();
+        erpSyncBtn.disabled = false;
+        if (!res.ok) { alert(data.detail || 'ERP sync failed.'); return; }
+        alert(data.status === 'SYNCED'
+            ? 'Synced to ERP. Reference: ' + (data.erp_reference || '-')
+            : 'ERP sync ' + data.status + (data.last_error ? ': ' + data.last_error : ''));
+        location.reload();
+    });
+}
+
+// ===================== Delivery & GRN =====================
+const deliveryModalEl = document.getElementById('deliveryModal');
+const deliveryModal = deliveryModalEl ? new bootstrap.Modal(deliveryModalEl) : null;
+const grnModalEl = document.getElementById('grnModal');
+const grnModal = grnModalEl ? new bootstrap.Modal(grnModalEl) : null;
+let grnDeliveryId = null;
+
+function deliveryBadge(s) {
+    if (s === 'Delivered') return 'bg-success';
+    if (s === 'Partially Delivered') return 'bg-warning text-dark';
+    if (s === 'Damaged' || s === 'Rejected' || s === 'Short Supply') return 'bg-danger';
+    if (s === 'In Transit' || s === 'Dispatched') return 'bg-info text-dark';
+    return 'bg-secondary';
+}
+
+async function loadDeliveries() {
+    const tl = document.getElementById('deliveryTimeline');
+    const rs = document.getElementById('receiptSummary');
+    try {
+        const res = await fetch(`/purchase-orders/${poId}/deliveries`);
+        const data = await res.json();
+
+        const summary = data.receipt_summary || [];
+        if (summary.length) {
+            rs.innerHTML = `
+                <table class="table table-sm mb-0">
+                    <thead class="table-light"><tr class="small"><th>Material</th><th class="text-end">Ordered</th><th class="text-end">Received</th><th class="text-end">Pending</th></tr></thead>
+                    <tbody>${summary.map(s => `
+                        <tr class="small">
+                            <td>${s.material_name}</td>
+                            <td class="text-end">${s.ordered_quantity} ${s.unit}</td>
+                            <td class="text-end ${s.fully_received ? 'text-success fw-semibold' : ''}">${s.received_quantity}</td>
+                            <td class="text-end ${s.pending_quantity > 0 ? 'text-danger' : ''}">${s.pending_quantity}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>`;
+        }
+
+        const deliveries = data.deliveries || [];
+        if (deliveries.length === 0) {
+            tl.innerHTML = '<p class="text-muted small mb-0">No deliveries recorded yet.</p>';
+            return;
+        }
+        tl.innerHTML = deliveries.map(d => `
+            <div class="border-start border-3 border-primary ps-3 pb-3 mb-2">
+                <div class="d-flex justify-content-between">
+                    <div class="fw-semibold small">
+                        ${d.dispatch_date ? 'Dispatched ' + d.dispatch_date : 'Dispatch'}
+                        ${d.vehicle_number ? ' · ' + d.vehicle_number : ''}
+                        <span class="badge ${deliveryBadge(d.status)} ms-1">${d.status}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-success grn-btn" data-delivery-id="${d.id}">
+                        <i class="bi bi-clipboard-check"></i> GRN
+                    </button>
+                </div>
+                ${d.driver_name ? `<div class="small text-muted">Driver: ${d.driver_name} ${d.driver_number || ''}</div>` : ''}
+                ${d.confirmed_by ? `<div class="small text-success">Received & confirmed by ${d.confirmed_by}</div>` : ''}
+                ${d.items && d.items.length ? `<div class="small mt-1">${d.items.map(i => `${i.material_name}: ${i.received_quantity}${i.quality_ok ? '' : ' ⚠'}`).join(' · ')}</div>` : ''}
+            </div>
+        `).join('');
+
+        document.querySelectorAll('.grn-btn').forEach(btn => {
+            btn.addEventListener('click', () => openGrn(parseInt(btn.dataset.deliveryId)));
+        });
+    } catch (e) {
+        tl.innerHTML = '<p class="text-danger small mb-0">Failed to load deliveries.</p>';
+    }
+}
+loadDeliveries();
+
+document.getElementById('addDeliveryBtn').addEventListener('click', () => deliveryModal.show());
+
+document.getElementById('saveDeliveryBtn').addEventListener('click', async () => {
+    const createdBy = document.getElementById('deliveryCreatedBy').value.trim();
+    if (!createdBy) { alert('Please enter who recorded this dispatch.'); return; }
+    const res = await fetch(`/purchase-orders/${poId}/deliveries`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            dispatch_date: document.getElementById('dispatchDate').value || null,
+            eta: document.getElementById('deliveryEta').value || null,
+            vehicle_number: document.getElementById('vehicleNumber').value.trim() || null,
+            driver_name: document.getElementById('driverName').value.trim() || null,
+            driver_number: document.getElementById('driverNumber').value.trim() || null,
+            status: document.getElementById('deliveryStatus').value,
+            remarks: document.getElementById('deliveryRemarks').value.trim() || null,
+            created_by: createdBy
+        })
+    });
+    if (res.ok) { deliveryModal.hide(); alert('Dispatch recorded.'); window.location.reload(); }
+    else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to save dispatch.'); }
+});
+
+function openGrn(deliveryId) {
+    grnDeliveryId = deliveryId;
+    document.getElementById('grnItemsBody').innerHTML = poItems.map(it => `
+        <tr>
+            <td class="small">${it.material_name}</td>
+            <td class="text-end small">${it.ordered_quantity} ${it.unit}</td>
+            <td class="text-end"><input type="number" step="0.001" class="form-control form-control-sm grn-qty" data-po-item-id="${it.po_item_id}" style="width:110px;display:inline-block;"></td>
+            <td class="text-center"><input type="checkbox" class="form-check-input grn-quality" data-po-item-id="${it.po_item_id}" checked></td>
+            <td><input type="text" class="form-control form-control-sm grn-notes" data-po-item-id="${it.po_item_id}"></td>
+        </tr>`).join('');
+    grnModal.show();
+}
+
+document.getElementById('saveGrnBtn').addEventListener('click', async () => {
+    const confirmedBy = document.getElementById('grnConfirmedBy').value.trim();
+    if (!confirmedBy) { alert('Please enter who confirmed receipt.'); return; }
+    const items = poItems.map(it => {
+        const qtyEl = document.querySelector(`.grn-qty[data-po-item-id="${it.po_item_id}"]`);
+        const qualEl = document.querySelector(`.grn-quality[data-po-item-id="${it.po_item_id}"]`);
+        const notesEl = document.querySelector(`.grn-notes[data-po-item-id="${it.po_item_id}"]`);
+        return {
+            po_item_id: it.po_item_id,
+            received_quantity: parseFloat(qtyEl.value) || 0,
+            quality_ok: qualEl.checked,
+            damage_notes: notesEl.value.trim() || null
+        };
+    });
+    const res = await fetch(`/deliveries/${grnDeliveryId}/grn`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ confirmed_by: confirmedBy, items })
+    });
+    if (res.ok) { grnModal.hide(); alert('GRN recorded.'); window.location.reload(); }
+    else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to record GRN.'); }
+});
+
+document.getElementById('updateStatusBtn').addEventListener('click', async () => {
+    const status = document.getElementById('statusSelect').value;
+    const approvedBy = document.getElementById('approvedBy').value.trim() || null;
+    const res = await fetch(`/purchase-orders/${poId}/status`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ status, approved_by: approvedBy })
+    });
+    if (res.ok) { alert(`Status updated to: ${status}`); window.location.reload(); }
+    else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to update status.'); }
+});
+
+document.getElementById('genPdfBtn').addEventListener('click', async () => {
+    const res = await fetch(`/purchase-orders/${poId}/generate-pdf`, { method: 'POST' });
+    if (res.ok) { alert('PDF generated.'); window.location.reload(); }
+    else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to generate PDF.'); }
+});
+
+const sendBtn = document.getElementById('sendPoBtn');
+if (sendBtn) {
+    sendBtn.addEventListener('click', async () => {
+        if (!confirm('Send this PO to the vendor on WhatsApp?')) return;
+        const res = await fetch(`/purchase-orders/${poId}/send`, { method: 'POST' });
+        if (res.ok) { alert('PO sent to vendor.'); window.location.reload(); }
+        else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to send PO.'); }
+    });
+}
+
+const saveBtn = document.getElementById('saveDetailsBtn');
+if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+        const res = await fetch(`/purchase-orders/${poId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                site_name: document.getElementById('siteName').value.trim() || null,
+                payment_terms: document.getElementById('paymentTerms').value.trim() || null,
+                contact_person: document.getElementById('contactPerson').value.trim() || null,
+                contact_number: document.getElementById('contactNumber').value.trim() || null,
+                delivery_timeline: document.getElementById('deliveryTimeline').value.trim() || null,
+                billing_address: document.getElementById('billingAddress').value.trim() || null,
+                shipping_address: document.getElementById('shippingAddress').value.trim() || null,
+                penalty_terms: document.getElementById('penaltyTerms').value.trim() || null,
+                terms_conditions: document.getElementById('termsConditions').value.trim() || null
+            })
+        });
+        if (res.ok) { alert('PO details saved.'); window.location.reload(); }
+        else { const d = await res.json().catch(()=>({})); alert(d.detail || 'Failed to save.'); }
+    });
+}
+</script>
+{% endblock %}

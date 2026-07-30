@@ -1,0 +1,87 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Reminders{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Reminders</h2>
+            <p class="text-muted mb-0">
+                Scheduler:
+                {% if scheduler_running %}
+                <span class="badge bg-success">Running (hourly)</span>
+                {% else %}
+                <span class="badge bg-secondary">Stopped</span>
+                {% endif %}
+                <span class="text-muted small ms-2">
+                    RFQ no-reply (12/24/48 hrs) &middot; payment due/overdue &middot; quotation expiry
+                </span>
+            </p>
+        </div>
+        <button class="btn btn-primary" id="runNowBtn">
+            <i class="bi bi-bell me-1"></i> Run Now
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if entries %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Type</th>
+                        <th>Entity</th>
+                        <th>Recipient</th>
+                        <th>Message</th>
+                        <th class="text-center">Status</th>
+                        <th>Sent At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in entries %}
+                    <tr>
+                        <td class="fw-semibold small">{{ e.reminder_type }}</td>
+                        <td class="small">{{ e.entity_type }} #{{ e.entity_id }}</td>
+                        <td class="small">{{ e.recipient or "-" }}</td>
+                        <td class="small text-muted" style="max-width: 420px;">
+                            {{ e.message or "-" }}
+                        </td>
+                        <td class="text-center">
+                            {% set s = e.status %}
+                            <span class="badge
+                                {% if s == 'SENT' %}bg-success
+                                {% elif s == 'FAILED' %}bg-danger
+                                {% else %}bg-secondary{% endif %}">{{ s }}</span>
+                        </td>
+                        <td class="small">{{ e.created_at or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-bell fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">No reminders sent yet. The scheduler checks every hour.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("runNowBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("runNowBtn");
+    btn.disabled = true;
+    const res = await fetch("/reminders/run", {method: "POST"});
+    const data = await res.json();
+    btn.disabled = false;
+    if (!res.ok) { alert(data.detail || "Failed."); return; }
+    alert("RFQ reminders: " + data.rfq_no_reply +
+          ", payment reminders: " + data.payments +
+          ", quotation expiry: " + data.quotation_expiry);
+    location.reload();
+});
+</script>
+{% endblock %}

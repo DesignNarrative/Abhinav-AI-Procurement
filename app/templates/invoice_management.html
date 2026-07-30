@@ -1,0 +1,194 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Invoices{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold">Invoices</h2>
+            <p class="text-muted mb-0">Vendor invoices &amp; 3-way match verification</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/dashboard/payments" class="btn btn-outline-secondary">
+                <i class="bi bi-cash-coin me-1"></i> Payments
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newInvoiceModal">
+                <i class="bi bi-plus-circle me-1"></i> New Invoice
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if invoices %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Vendor</th>
+                        <th>PO</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-center">Match</th>
+                        <th class="text-center">Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invoices %}
+                    <tr>
+                        <td class="fw-semibold text-primary">{{ inv.invoice_number }}</td>
+                        <td>{{ inv.vendor_name or "-" }}</td>
+                        <td>{{ inv.po_number or "-" }}</td>
+                        <td>{{ inv.invoice_date or "-" }}</td>
+                        <td class="text-end fw-bold">₹{{ "%,.2f"|format(inv.invoice_amount) }}</td>
+                        <td class="text-center">
+                            {% set m = inv.match_status %}
+                            <span class="badge
+                                {% if m == 'Matched' %}bg-success
+                                {% elif m == 'Mismatch' %}bg-danger
+                                {% else %}bg-light text-dark border{% endif %}">{{ m }}</span>
+                        </td>
+                        <td class="text-center">
+                            {% set s = inv.status %}
+                            <span class="badge
+                                {% if s == 'Received' %}bg-secondary
+                                {% elif s == 'Verified' %}bg-info text-dark
+                                {% elif s == 'Mismatch' %}bg-danger
+                                {% elif s == 'Approved' %}bg-primary
+                                {% elif s == 'Paid' %}bg-success
+                                {% else %}bg-light text-dark{% endif %}">{{ s }}</span>
+                        </td>
+                        <td class="text-end">
+                            <a href="/dashboard/invoices/{{ inv.id }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-receipt fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">No invoices yet. Add one manually or send an invoice via WhatsApp.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- New Invoice Modal -->
+<div class="modal fade" id="newInvoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">New Invoice</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Vendor *</label>
+                        <select class="form-select" id="invVendor">
+                            <option value="">Select vendor</option>
+                            {% for v in vendors %}
+                            <option value="{{ v.id }}">{{ v.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Purchase Order</label>
+                        <select class="form-select" id="invPo">
+                            <option value="">(none)</option>
+                            {% for p in pos %}
+                            <option value="{{ p.id }}">{{ p.po_number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Invoice Number *</label>
+                        <input type="text" class="form-control" id="invNumber">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Invoice Date</label>
+                        <input type="date" class="form-control" id="invDate">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Taxable Amount</label>
+                        <input type="number" step="0.01" class="form-control" id="invTaxable" value="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Total Tax</label>
+                        <input type="number" step="0.01" class="form-control" id="invTax" value="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Invoice Amount *</label>
+                        <input type="number" step="0.01" class="form-control" id="invAmount" value="0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Recorded By *</label>
+                        <input type="text" class="form-control" id="invBy" placeholder="Your name">
+                    </div>
+                </div>
+                <div id="invError" class="text-danger small mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" id="saveInvoiceBtn">
+                    <i class="bi bi-floppy me-1"></i> Save Invoice
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("saveInvoiceBtn").addEventListener("click", async () => {
+    const err = document.getElementById("invError");
+    err.textContent = "";
+
+    const vendorId = document.getElementById("invVendor").value;
+    const invNumber = document.getElementById("invNumber").value.trim();
+    const invBy = document.getElementById("invBy").value.trim();
+
+    if (!vendorId || !invNumber || !invBy) {
+        err.textContent = "Vendor, Invoice Number and Recorded By are required.";
+        return;
+    }
+
+    const poVal = document.getElementById("invPo").value;
+    const dateVal = document.getElementById("invDate").value;
+
+    const payload = {
+        vendor_id: parseInt(vendorId),
+        po_id: poVal ? parseInt(poVal) : null,
+        invoice_number: invNumber,
+        invoice_date: dateVal || null,
+        taxable_amount: parseFloat(document.getElementById("invTaxable").value) || 0,
+        total_tax_amount: parseFloat(document.getElementById("invTax").value) || 0,
+        invoice_amount: parseFloat(document.getElementById("invAmount").value) || 0,
+        created_by: invBy,
+        items: []
+    };
+
+    try {
+        const res = await fetch("/invoices", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            err.textContent = data.detail || "Failed to save invoice.";
+            return;
+        }
+        window.location.href = "/dashboard/invoices/" + data.id;
+    } catch (e) {
+        err.textContent = "Network error: " + e;
+    }
+});
+</script>
+{% endblock %}

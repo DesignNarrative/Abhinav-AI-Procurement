@@ -40,6 +40,9 @@ class RFQService:
             delivery_location=data["delivery_location"],
             payment_terms=data.get("payment_terms"),
             created_by=data["created_by"],
+            priority=data.get("priority"),
+            required_date=data.get("required_date"),
+            purpose=data.get("purpose"),
             status="Draft"
         )
         db.add(rfq)
@@ -141,6 +144,12 @@ class RFQService:
                 delivery_location=delivery_location,
                 payment_terms=None,
                 created_by=requirement.requested_by,
+                priority=requirement.priority,
+                required_date=(
+                    requirement.required_date.isoformat()
+                    if requirement.required_date else None
+                ),
+                purpose=requirement.purpose,
                 status="Draft",
                 requirement_id=requirement.id
             )
@@ -295,7 +304,10 @@ class RFQService:
             items=item_dicts,
             deadline=deadline,
             contact_person=contact_person,
-            contact_number=contact_number
+            contact_number=contact_number,
+            priority=rfq.priority,
+            required_date=rfq.required_date,
+            purpose=rfq.purpose
         )
 
         results = []

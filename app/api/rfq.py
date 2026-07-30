@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.dependencies import get_db
 from app.schemas.rfq import (
     RFQCreate, RFQResponse, RFQDetailResponse,
-    RFQStatusUpdate, RFQUpdate,
+    RFQStatusUpdate, RFQUpdate, RFQPreviewRequest,
     RFQItemCreate, RFQItemResponse,
     RFQVendorAdd, RFQVendorResponse
 )
@@ -208,7 +208,56 @@ def preview_rfq_message(
         items=item_dicts,
         deadline=deadline,
         contact_person=contact_person,
-        contact_number=contact_number
+        contact_number=contact_number,
+        priority=rfq.priority,
+        required_date=rfq.required_date,
+        purpose=rfq.purpose
     )
 
     return {"rfq_number": rfq.rfq_number, "message": message}
+
+
+# ─────────────────────────────────────
+# Preview WhatsApp Message BEFORE saving (unified create page)
+# ─────────────────────────────────────
+
+@router.post("/preview")
+def preview_rfq_message_unsaved(
+    payload: RFQPreviewRequest
+):
+    """Build the WhatsApp message from a draft form payload (no DB write).
+
+    Uses the SAME generator as send/details preview so the message shown is
+    exactly what will be sent.
+    """
+    from app.services.rfq_whatsapp_service import generate_rfq_whatsapp_message
+
+    item_dicts = [
+        {
+            "material_name": it.material_name,
+            "material_category": it.material_category,
+            "quantity": it.quantity,
+            "unit": it.unit,
+            "brand_required": it.brand_required,
+            "dynamic_fields": it.dynamic_fields or {},
+            "remarks": it.remarks
+        }
+        for it in payload.items
+    ]
+
+    message = generate_rfq_whatsapp_message(
+        rfq_number="RFQ-PREVIEW",
+        project_name=payload.project_name,
+        site_name=payload.site_name,
+        delivery_location=payload.delivery_location,
+        payment_terms=payload.payment_terms,
+        items=item_dicts,
+        deadline=payload.deadline,
+        contact_person=payload.contact_person,
+        contact_number=payload.contact_number,
+        priority=payload.priority,
+        required_date=payload.required_date,
+        purpose=payload.purpose
+    )
+
+    return {"message": message}

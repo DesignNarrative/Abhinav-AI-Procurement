@@ -63,6 +63,9 @@ class RFQCreate(BaseModel):
     delivery_location: str
     payment_terms: Optional[str] = None
     created_by: str
+    priority: Optional[str] = None
+    required_date: Optional[str] = None
+    purpose: Optional[str] = None
 
 
 class RFQStatusUpdate(BaseModel):
@@ -75,6 +78,25 @@ class RFQUpdate(BaseModel):
     payment_terms: Optional[str] = None
 
 
+class RFQPreviewRequest(BaseModel):
+    """Payload for previewing the WhatsApp message BEFORE the RFQ is saved.
+
+    Uses the same fields as the create form so the preview is byte-for-byte
+    identical to what will actually be sent.
+    """
+    project_name: str = ""
+    site_name: str = ""
+    delivery_location: str = ""
+    payment_terms: Optional[str] = None
+    priority: Optional[str] = None
+    required_date: Optional[str] = None
+    purpose: Optional[str] = None
+    items: List[RFQItemCreate] = []
+    deadline: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_number: Optional[str] = None
+
+
 class RFQResponse(BaseModel):
     id: int
     rfq_number: str
@@ -84,6 +106,9 @@ class RFQResponse(BaseModel):
     payment_terms: Optional[str]
     status: str
     created_by: str
+    priority: Optional[str] = None
+    required_date: Optional[str] = None
+    purpose: Optional[str] = None
     requirement_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime

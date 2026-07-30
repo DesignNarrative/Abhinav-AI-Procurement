@@ -1,0 +1,72 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Vendor Scorecards{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="mb-4">
+        <h2 class="fw-bold">Vendor Scorecards</h2>
+        <p class="text-muted mb-0">
+            Computed from history — response rate, delivery success, quality and awards.
+            Feeds the comparison scoring engine.
+        </p>
+    </div>
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body table-responsive">
+            {% if scorecards %}
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Vendor</th>
+                        <th class="text-center">Score</th>
+                        <th class="text-center">Response</th>
+                        <th class="text-center">Awards</th>
+                        <th class="text-center">Deliveries</th>
+                        <th class="text-center">Delivery Success</th>
+                        <th class="text-center">Quality Issues</th>
+                        <th class="text-end">Total Spend</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in scorecards %}
+                    <tr>
+                        <td class="fw-semibold">
+                            {{ c.vendor_name }}
+                            {% if c.supplier_code %}
+                            <span class="text-muted small d-block">{{ c.supplier_code }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% set sc = c.score %}
+                            <span class="badge fs-6
+                                {% if sc >= 75 %}bg-success
+                                {% elif sc >= 50 %}bg-warning text-dark
+                                {% else %}bg-danger{% endif %}">{{ sc }}</span>
+                        </td>
+                        <td class="text-center">{{ c.response_rate }}%
+                            <span class="text-muted small d-block">{{ c.rfqs_quoted }}/{{ c.rfqs_invited }}</span></td>
+                        <td class="text-center">{{ c.awards_won }}</td>
+                        <td class="text-center">{{ c.deliveries_total }}</td>
+                        <td class="text-center">{{ c.delivery_success_rate }}%</td>
+                        <td class="text-center">
+                            {% if c.quality_issues > 0 %}
+                            <span class="text-danger fw-semibold">{{ c.quality_issues }}</span>
+                            {% else %}0{% endif %}
+                        </td>
+                        <td class="text-end">₹{{ "{:,.2f}".format(c.total_spend) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-graph-up fs-1 text-muted"></i>
+                <p class="text-muted mt-2 mb-0">No approved vendors with activity yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
