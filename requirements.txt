@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+sqlalchemy
+python-dotenv
+python-dateutil
+openpyxl
+pymupdf
+paddleocr
+rapidfuzz
+requests
+httpx
+aiofiles
+psycopg2-binary
+email-validator
