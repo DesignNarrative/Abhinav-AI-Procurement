@@ -457,38 +457,17 @@ def extract_text_via_ocr(
                 detail=f"OCR extraction is not supported for extension '{log.file_extension}'."
             )
 
-        # Step 2: Initialize PaddleOCR dynamically (lazy import)
-        try:
-            from paddleocr import PaddleOCR
-            ocr = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to initialize PaddleOCR engine: {str(e)}"
-            )
-
-        # Step 3: Run OCR extraction
-        extracted_lines = []
-        try:
-            for img_path in images_paths:
-                result = ocr.ocr(img_path, cls=True)
-                if result and result[0]:
-                    for line in result[0]:
-                        text = line[1][0]
-                        if text:
-                            extracted_lines.append(text)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"PaddleOCR processing error: {str(e)}"
-            )
+        # Step 2 & 3: Run vision OCR (Gemini) on the prepared page images.
+        # Replaces the previous local PaddleOCR engine, which required the
+        # heavy paddlepaddle dependency. Gemini vision reuses the same REST
+        # infrastructure already configured for LLM extraction.
+        from app.services.extraction.vision_ocr import ocr_images_to_text
+        total_text = ocr_images_to_text(images_paths).strip()
 
     finally:
         # Cleanup temporary directory if generated
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
-
-    total_text = "\n".join(extracted_lines).strip()
 
     # Save extracted text to a parallel text file
     text_filename = f"{document_uuid}_extracted.txt"

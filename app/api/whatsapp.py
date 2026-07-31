@@ -816,16 +816,66 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                 db = next(get_db())
 
-                response = process_whatsapp_message(
-                    sender_phone,
-                    message_text,
-                    db
-                )
+                # Decide whether this text belongs to the registration flow or
+                # is a plain-text quotation from an already-approved supplier.
+                active_conversation = db.query(
+                    SupplierConversation
+                ).filter(
+                    SupplierConversation.phone_number == sender_phone,
+                    SupplierConversation.conversation_status == "IN_PROGRESS"
+                ).first()
 
-                send_text_message(
-                    sender_phone,
-                    response["reply"]
-                )
+                incoming = (message_text or "").strip().upper()
+                registration_keywords = ["HI", "HELLO", "HII", "START"]
+
+                routed_to_quotation = False
+
+                if not active_conversation and incoming not in registration_keywords:
+                    # Check if sender is an approved supplier
+                    clean_phone = sender_phone.replace("+", "").strip()
+                    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                    supplier = db.query(Supplier).filter(
+                        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                        (Supplier.whatsapp_number == sender_phone)
+                    ).filter(
+                        Supplier.registration_status == "APPROVED"
+                    ).first()
+
+                    # Only treat substantial messages that look like a quote as
+                    # quotations — greetings/short replies fall through to the
+                    # normal registration handler.
+                    text_lower = (message_text or "").lower()
+                    quotation_signals = [
+                        "quotation", "quote", "rate", "price", "amount",
+                        "gst", "\u20b9", "rs", "per ", "qty", "nos"
+                    ]
+                    looks_like_quotation = any(sig in text_lower for sig in quotation_signals)
+
+                    if supplier and looks_like_quotation:
+                        from app.services.whatsapp_pipeline_service import process_whatsapp_text_quotation
+                        background_tasks.add_task(
+                            process_whatsapp_text_quotation,
+                            db,
+                            sender_phone,
+                            message_text
+                        )
+                        send_text_message(
+                            sender_phone,
+                            "We have received your quotation and our AI is processing it. You will receive a confirmation shortly."
+                        )
+                        routed_to_quotation = True
+
+                if not routed_to_quotation:
+                    response = process_whatsapp_message(
+                        sender_phone,
+                        message_text,
+                        db
+                    )
+
+                    send_text_message(
+                        sender_phone,
+                        response["reply"]
+                    )
 
             elif message.get("type") == "document":
 

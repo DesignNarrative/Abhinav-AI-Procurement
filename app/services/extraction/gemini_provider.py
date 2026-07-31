@@ -1,11 +1,16 @@
 import os
 import json
+import time
 import httpx
 from fastapi import HTTPException
 from app.schemas.document_extraction import DocumentExtractionPayload
 from app.services.extraction.base_provider import BaseExtractionProvider
 from app.services.extraction.lenient_parser import lenient_parse_and_validate
 from app.services.extraction.prompt_helper import get_extraction_prompt
+
+# Transient HTTP status codes worth retrying (Gemini load spikes / rate limits)
+_RETRYABLE_STATUS = {429, 500, 503}
+_MAX_ATTEMPTS = 4
 
 class GeminiExtractionProvider(BaseExtractionProvider):
     def __init__(self):
@@ -37,7 +42,14 @@ class GeminiExtractionProvider(BaseExtractionProvider):
         }
 
         try:
-            r = httpx.post(self.url, json=payload, timeout=180.0)
+            r = None
+            for attempt in range(1, _MAX_ATTEMPTS + 1):
+                r = httpx.post(self.url, json=payload, timeout=180.0)
+                if r.status_code in _RETRYABLE_STATUS and attempt < _MAX_ATTEMPTS:
+                    # Transient overload — back off and retry.
+                    time.sleep(2 * attempt)
+                    continue
+                break
             if r.status_code != 200:
                 raise HTTPException(
                     status_code=502,
