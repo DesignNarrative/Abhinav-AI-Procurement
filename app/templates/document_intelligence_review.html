@@ -382,7 +382,25 @@
                 <div class="card-body text-center py-4 text-muted">
                     <i class="bi bi-file-earmark-x fs-2 d-block mb-2 text-secondary"></i>
                     <div class="small">No draft quotation created yet.</div>
+                    {% if candidate_rfqs %}
+                    <div class="small mt-1">Select the RFQ this quotation belongs to:</div>
+                    <div class="mt-3 text-start">
+                        <select id="draftRfqSelect" class="form-select form-select-sm mb-2">
+                            {% for c_rfq in candidate_rfqs %}
+                            <option value="{{ c_rfq.id }}">
+                                {{ c_rfq.rfq_number }} — {{ c_rfq.project_name }} ({{ c_rfq.status }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <button id="createDraftBtn" class="btn btn-sm btn-primary w-100"
+                                onclick="createDraftQuotation()">
+                            <i class="bi bi-file-earmark-plus me-1"></i>Create Draft Quotation
+                        </button>
+                        <div id="createDraftError" class="text-danger small mt-2 d-none"></div>
+                    </div>
+                    {% else %}
                     <div class="small mt-1">Use <code>POST /{uuid}/create-draft-quotation</code> via Swagger to draft one.</div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -499,6 +517,40 @@ async function approveDocument() {
         showAlert(`<i class="bi bi-exclamation-triangle me-2"></i><strong>Network error:</strong> ${err.message}`, "danger");
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Approve';
+    }
+}
+
+async function createDraftQuotation() {
+    const select = document.getElementById("draftRfqSelect");
+    const btn = document.getElementById("createDraftBtn");
+    const errEl = document.getElementById("createDraftError");
+    if (!select || !select.value) return;
+
+    errEl.classList.add("d-none");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Creating\u2026';
+
+    try {
+        const response = await fetch(
+            `/document-intelligence/${DOCUMENT_UUID}/create-draft-quotation?rfq_id=${select.value}`,
+            { method: "POST" }
+        );
+        const data = await response.json();
+
+        if (response.ok) {
+            showAlert(`<i class="bi bi-check-circle-fill me-2"></i><strong>Draft created!</strong> ${data.message || ""}`, "success");
+            setTimeout(() => window.location.reload(), 800);
+        } else {
+            errEl.textContent = data.detail || "Could not create the draft quotation.";
+            errEl.classList.remove("d-none");
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-file-earmark-plus me-1"></i>Create Draft Quotation';
+        }
+    } catch (err) {
+        errEl.textContent = `Network error: ${err.message}`;
+        errEl.classList.remove("d-none");
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-file-earmark-plus me-1"></i>Create Draft Quotation';
     }
 }
 

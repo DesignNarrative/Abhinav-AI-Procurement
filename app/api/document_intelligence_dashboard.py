@@ -118,6 +118,25 @@ def document_intelligence_review(
                     "rfq_item": rfq_item,
                 })
 
+    # For quotations without a draft yet (e.g. ambiguous RFQ resolution),
+    # offer the supplier's candidate RFQs so the reviewer can pick one manually.
+    candidate_rfqs = []
+    if (
+        not draft_quotation
+        and log.supplier_id
+        and (log.document_type or "").upper() == "QUOTATION"
+    ):
+        candidate_rfqs = (
+            db.query(RFQ)
+            .join(RFQVendor, RFQVendor.rfq_id == RFQ.id)
+            .filter(
+                RFQVendor.vendor_id == log.supplier_id,
+                RFQ.status.notin_(["Closed", "Cancelled"])
+            )
+            .order_by(RFQ.created_at.desc())
+            .all()
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="document_intelligence_review.html",
@@ -128,6 +147,7 @@ def document_intelligence_review(
             "draft_quotation": draft_quotation,
             "draft_items": draft_items,
             "rfq": rfq,
+            "candidate_rfqs": candidate_rfqs,
             "document_uuid": document_uuid,
         }
     )

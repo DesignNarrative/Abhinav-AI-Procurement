@@ -4,16 +4,21 @@ Orchestrates the entire document intelligence pipeline for inbound WhatsApp file
 """
 
 import os
+import re
+import json
 import shutil
 import logging
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
+from rapidfuzz import fuzz
 
 from app.models.supplier import Supplier
 from app.models.rfq_vendor import RFQVendor
 from app.models.rfq import RFQ
+from app.models.rfq_item import RFQItem
 from app.models.document_ingestion_log import DocumentIngestionLog
 from app.services.document_intelligence_service import (
+    INGEST_FOLDER,
     ingest_document,
     extract_text_from_pdf,
     classify_document,
@@ -26,6 +31,131 @@ from app.services.invoice_service import InvoiceService
 from app.services.whatsapp_service import send_text_message
 
 logger = logging.getLogger(__name__)
+
+
+# Matches system RFQ numbers like "RFQ-2026-004" in any tolerant form
+# ("rfq 2026 4", "RFQ/2026/004", ...). Group 1 = year, group 2 = sequence.
+_RFQ_NUMBER_PATTERN = re.compile(
+    r"RFQ[\s\-_/]*(\d{4})[\s\-_/]*(\d{1,4})",
+    re.IGNORECASE
+)
+
+
+def _resolve_target_rfq(db: Session, supplier: Supplier, uuid: str):
+    """
+    Deterministically resolve which RFQ an incoming quotation belongs to.
+
+    Resolution order:
+      1. Explicit RFQ number mentioned in the document text → that RFQ
+         (only if this vendor is invited to it and it is still active).
+      2. Vendor invited to exactly one active RFQ → that RFQ.
+      3. Multiple candidates → fuzzy-match extracted line items against each
+         candidate's items; pick the clear winner only.
+      4. Otherwise → no auto-link (manual review), never guess.
+
+    Returns:
+        (rfq, reason) — rfq is an RFQ or None;
+        reason is 'explicit_number', 'single_candidate', 'item_match',
+        'no_active_rfq', or 'ambiguous'.
+    """
+    candidates = (
+        db.query(RFQ)
+        .join(RFQVendor, RFQVendor.rfq_id == RFQ.id)
+        .filter(
+            RFQVendor.vendor_id == supplier.id,
+            RFQ.status.notin_(["Closed", "Cancelled"])
+        )
+        .order_by(RFQ.created_at.desc())
+        .all()
+    )
+
+    if not candidates:
+        return None, "no_active_rfq"
+
+    # ── Step 1: explicit RFQ number in the extracted text ────────────────
+    text_path = os.path.join(INGEST_FOLDER, f"{uuid}_extracted.txt").replace("\\", "/")
+    raw_text = ""
+    if os.path.exists(text_path):
+        try:
+            with open(text_path, "r", encoding="utf-8") as f:
+                raw_text = f.read()
+        except OSError:
+            raw_text = ""
+
+    mentioned = {
+        (m.group(1), int(m.group(2)))
+        for m in _RFQ_NUMBER_PATTERN.finditer(raw_text)
+    }
+    if mentioned:
+        explicit_match = None
+        for rfq in candidates:
+            m = _RFQ_NUMBER_PATTERN.match(rfq.rfq_number or "")
+            if m and (m.group(1), int(m.group(2))) in mentioned:
+                explicit_match = rfq
+                break
+        if explicit_match:
+            logger.info(
+                f"RFQ resolved by explicit number in document: {explicit_match.rfq_number}"
+            )
+            return explicit_match, "explicit_number"
+        # Document names an RFQ this vendor is not invited to (or an
+        # inactive one) — do not guess, force manual review.
+        logger.warning(
+            f"Document {uuid} mentions RFQ number(s) {mentioned} that do not "
+            f"match any active RFQ for supplier {supplier.id}. Manual review."
+        )
+        return None, "ambiguous"
+
+    # ── Step 2: single active candidate ─────────────────────────────
+    if len(candidates) == 1:
+        return candidates[0], "single_candidate"
+
+    # ── Step 3: line-item matching across multiple candidates ───────────
+    extracted_names = []
+    json_path = os.path.join(INGEST_FOLDER, f"{uuid}_extracted.json").replace("\\", "/")
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            for item in payload.get("line_items", []):
+                name = (item.get("material_name") or {}).get("value")
+                if name:
+                    extracted_names.append(str(name))
+        except Exception:
+            extracted_names = []
+
+    if extracted_names:
+        scored = []
+        for rfq in candidates:
+            rfq_items = db.query(RFQItem).filter(RFQItem.rfq_id == rfq.id).all()
+            if not rfq_items:
+                scored.append((0.0, rfq))
+                continue
+            per_item_best = []
+            for name in extracted_names:
+                best = max(
+                    fuzz.token_set_ratio(name.lower(), ri.material_name.lower())
+                    for ri in rfq_items
+                )
+                per_item_best.append(best)
+            scored.append((sum(per_item_best) / len(per_item_best), rfq))
+
+        scored.sort(key=lambda t: t[0], reverse=True)
+        best_score = scored[0][0]
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        if best_score >= 60.0 and (best_score - runner_up) >= 15.0:
+            logger.info(
+                f"RFQ resolved by line-item match: {scored[0][1].rfq_number} "
+                f"(score {best_score:.1f} vs runner-up {runner_up:.1f})"
+            )
+            return scored[0][1], "item_match"
+
+    # ── Step 4: ambiguous — never guess ────────────────────────────
+    logger.info(
+        f"Could not unambiguously resolve RFQ for document {uuid} "
+        f"({len(candidates)} active candidates). Manual review required."
+    )
+    return None, "ambiguous"
 
 
 def process_whatsapp_document_pipeline(
@@ -219,16 +349,16 @@ def _finalize_document(
                 "error": str(inv_err)
             }
 
-    # Trigger Phase 9: Auto-Drafting to DB if active RFQ is resolved
-    # Find most recent active RFQ Vendor association
-    rfq_vendor = db.query(RFQVendor).join(RFQ).filter(
-        RFQVendor.vendor_id == supplier.id,
-        RFQ.status.notin_(["Closed", "Cancelled"])
-    ).order_by(RFQ.created_at.desc()).first()
+    # Trigger Phase 9: Auto-Drafting to DB if the target RFQ can be resolved
+    # deterministically (explicit RFQ number > single candidate > item match).
+    # Never guess between multiple RFQs — ambiguous cases go to manual review.
+    rfq, resolve_reason = _resolve_target_rfq(db, supplier, uuid)
 
-    if rfq_vendor:
-        rfq = rfq_vendor.rfq
-        logger.info(f"Found active RFQ {rfq.rfq_number} (ID: {rfq.id}) for vendor. Triggering auto-draft...")
+    if rfq:
+        logger.info(
+            f"Resolved RFQ {rfq.rfq_number} (ID: {rfq.id}) for vendor "
+            f"via '{resolve_reason}'. Triggering auto-draft..."
+        )
         try:
             draft_res = create_draft_quotation(db, uuid, rfq.id)
             logger.info(f"Auto-draft quotation created successfully. ID: {draft_res.get('quotation_id')}")
@@ -246,6 +376,7 @@ def _finalize_document(
                 "document_type": doc_type,
                 "action": "draft_created",
                 "rfq_id": rfq.id,
+                "rfq_resolution": resolve_reason,
                 "quotation_id": draft_res.get("quotation_id")
             }
         except Exception as draft_err:
@@ -265,7 +396,7 @@ def _finalize_document(
                 "action": "manual_review_draft_error",
                 "error": str(draft_err)
             }
-    else:
+    elif resolve_reason == "no_active_rfq":
         logger.info(f"No active RFQ found for vendor. Processing stops at extraction phase.")
         # Send confirmation WhatsApp message to supplier
         send_text_message(
@@ -280,6 +411,28 @@ def _finalize_document(
             "document_uuid": uuid,
             "document_type": doc_type,
             "action": "manual_review_no_rfq"
+        }
+    else:
+        # Ambiguous: vendor has multiple active RFQs (or named an RFQ we
+        # could not match). Extraction is complete (document stays DONE);
+        # a human picks the RFQ on the review page instead of us guessing.
+        logger.info(
+            f"RFQ resolution ambiguous for document {uuid}. "
+            f"Skipping auto-draft; awaiting manual RFQ selection."
+        )
+        send_text_message(
+            sender_phone,
+            f"Dear {supplier.contact_person_name},\n\n"
+            f"Thank you! Your quotation has been received and is under manual "
+            f"review by our procurement team. "
+            f"Tip: to speed up processing next time, please mention the RFQ "
+            f"number (e.g. RFQ-2026-004) in your quotation."
+        )
+        return {
+            "status": "processed",
+            "document_uuid": uuid,
+            "document_type": doc_type,
+            "action": "manual_review_ambiguous_rfq"
         }
 
 

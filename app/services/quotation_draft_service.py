@@ -149,6 +149,23 @@ def create_draft_quotation(
             "duplicate": True,
         }
 
+    # ── 3b. Revision handling: supersede this vendor's previous latest quote ──
+    # A different quotation number for the same vendor + RFQ is a revision:
+    # every older quote loses is_latest so comparison always shows exactly one
+    # column per vendor (the most recent quote).
+    superseded_rows = db.query(Quotation).filter(
+        Quotation.rfq_id == rfq_id,
+        Quotation.vendor_id == supplier.id,
+        Quotation.is_latest == True,  # noqa: E712
+    ).all()
+    revision_number = 0
+    superseded = None
+    if superseded_rows:
+        revision_number = max((q.revision_number or 0) for q in superseded_rows) + 1
+        for old_q in superseded_rows:
+            old_q.is_latest = False
+        superseded = max(superseded_rows, key=lambda q: q.id)
+
     # ── 4. Parse quotation header fields ──────────────────────────────────────
     raw_date = _get_field_value(payload.document_metadata.document_date)
     try:
@@ -164,7 +181,7 @@ def create_draft_quotation(
     # ── 5. Create the Quotation header record ─────────────────────────────────
     quotation = Quotation(
         quotation_number=quotation_number,
-        revision_number=0,
+        revision_number=revision_number,
         rfq_id=rfq_id,
         vendor_id=supplier.id,
         is_latest=True,
@@ -190,19 +207,23 @@ def create_draft_quotation(
     for ext_item in payload.line_items:
         ext_name = _get_field_value(ext_item.material_name, "")
 
-        # Fuzzy match against RFQ items
+        # Fuzzy match against RFQ items. token_set_ratio handles subset names
+        # (e.g. RFQ "tmt bar" vs quoted "TMT BAR (Grade 550e)") that
+        # token_sort_ratio would under-score.
         best_score = 0.0
         best_rfq_item: Optional[RFQItem] = None
         for ri in rfq_items:
-            score = fuzz.token_sort_ratio(ext_name.lower(), ri.material_name.lower())
+            score = fuzz.token_set_ratio(ext_name.lower(), ri.material_name.lower())
             if score > best_score:
                 best_score = score
                 best_rfq_item = ri
 
         if best_rfq_item is None or best_score < fuzzy_threshold:
-            # Fallback: map to first RFQ item to avoid FK integrity error
-            best_rfq_item = rfq_items[0]
+            # No confident match against this RFQ's items: skip the item
+            # instead of force-mapping it to rfq_items[0], which would pollute
+            # another material's comparison row with the wrong rate.
             unmatched_items.append(ext_name)
+            continue
 
         qty = _get_field_value(ext_item.quantity, 0.0)
         rate = _get_field_value(ext_item.basic_rate, 0.0)
@@ -235,8 +256,15 @@ def create_draft_quotation(
     db.commit()
     db.refresh(quotation)
 
+    message = "Draft quotation created successfully from AI extraction."
+    if unmatched_items:
+        message += (
+            f" Note: {len(unmatched_items)} extracted item(s) did not match any "
+            f"RFQ item and were left unmapped: {', '.join(unmatched_items)}."
+        )
+
     return {
-        "message": "Draft quotation created successfully from AI extraction.",
+        "message": message,
         "quotation_id": quotation.id,
         "quotation_number": quotation.quotation_number,
         "vendor_name": supplier.company_name,
@@ -247,4 +275,6 @@ def create_draft_quotation(
         "grand_total": float(quotation.grand_total),
         "status": quotation.status,
         "duplicate": False,
+        "revision_number": quotation.revision_number,
+        "superseded_quotation_id": superseded.id if superseded else None,
     }
