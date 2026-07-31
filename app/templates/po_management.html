@@ -36,7 +36,7 @@
                         <td class="fw-semibold text-primary">{{ row.po.po_number }}</td>
                         <td>{{ row.vendor_name }}</td>
                         <td>{{ row.po.po_date.strftime("%d-%b-%Y") if row.po.po_date else "-" }}</td>
-                        <td class="text-end fw-bold">₹{{ "%,.2f"|format(row.po.grand_total) }}</td>
+                        <td class="text-end fw-bold">₹{{ "{:,.2f}".format(row.po.grand_total) }}</td>
                         <td class="text-center">
                             {% set s = row.po.status %}
                             <span class="badge

@@ -83,7 +83,7 @@
                                 <td class="text-end">{{ it.discount_percent }}</td>
                                 <td class="text-end">{{ it.tax_percent }}</td>
                                 <td class="text-end">₹{{ "%.2f"|format(it.final_landed_rate) }}</td>
-                                <td class="text-end fw-semibold">₹{{ "%,.2f"|format(it.total_amount) }}</td>
+                                <td class="text-end fw-semibold">₹{{ "{:,.2f}".format(it.total_amount) }}</td>
                             </tr>
                             {% else %}
                             <tr><td colspan="7" class="text-muted text-center">No items.</td></tr>
@@ -92,15 +92,15 @@
                         <tfoot>
                             <tr>
                                 <td colspan="6" class="text-end text-muted">Freight Total</td>
-                                <td class="text-end">₹{{ "%,.2f"|format(po.freight_total) }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(po.freight_total) }}</td>
                             </tr>
                             <tr>
                                 <td colspan="6" class="text-end text-muted">Loading / Unloading</td>
-                                <td class="text-end">₹{{ "%,.2f"|format(po.loading_unloading_total) }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(po.loading_unloading_total) }}</td>
                             </tr>
                             <tr class="table-light">
                                 <td colspan="6" class="text-end fw-bold">Grand Total</td>
-                                <td class="text-end fw-bold text-success">₹{{ "%,.2f"|format(po.grand_total) }}</td>
+                                <td class="text-end fw-bold text-success">₹{{ "{:,.2f}".format(po.grand_total) }}</td>
                             </tr>
                         </tfoot>
                     </table>

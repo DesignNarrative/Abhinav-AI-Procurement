@@ -88,7 +88,7 @@
                                 <td class="text-end">{{ it.invoiced_quantity }} {{ it.unit or "" }}</td>
                                 <td class="text-end">₹{{ "%.2f"|format(it.rate) }}</td>
                                 <td class="text-end">{{ it.tax_percent }}</td>
-                                <td class="text-end fw-semibold">₹{{ "%,.2f"|format(it.amount) }}</td>
+                                <td class="text-end fw-semibold">₹{{ "{:,.2f}".format(it.amount) }}</td>
                             </tr>
                             {% else %}
                             <tr><td colspan="5" class="text-muted text-center">No line items captured — header amounts only.</td></tr>
@@ -122,7 +122,7 @@
                             {% for p in payments %}
                             <tr>
                                 <td>{{ p.payment_type }}</td>
-                                <td class="text-end">₹{{ "%,.2f"|format(p.amount) }}</td>
+                                <td class="text-end">₹{{ "{:,.2f}".format(p.amount) }}</td>
                                 <td>{{ p.due_date or "-" }}</td>
                                 <td>{{ p.paid_date or "-" }}</td>
                                 <td class="text-center">
@@ -160,22 +160,22 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Taxable</span>
-                        <span>₹{{ "%,.2f"|format(invoice.taxable_amount) }}</span>
+                        <span>₹{{ "{:,.2f}".format(invoice.taxable_amount) }}</span>
                     </div>
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-muted">Total Tax</span>
-                        <span>₹{{ "%,.2f"|format(invoice.total_tax_amount) }}</span>
+                        <span>₹{{ "{:,.2f}".format(invoice.total_tax_amount) }}</span>
                     </div>
                     <div class="d-flex justify-content-between fw-bold border-top pt-2">
                         <span>Invoice Total</span>
-                        <span class="text-success">₹{{ "%,.2f"|format(invoice.invoice_amount) }}</span>
+                        <span class="text-success">₹{{ "{:,.2f}".format(invoice.invoice_amount) }}</span>
                     </div>
                     <hr>
                     <div class="text-muted small">Invoice Date: {{ invoice.invoice_date or "-" }}</div>
                     {% if po %}
                     <div class="text-muted small mt-1">
                         PO: <a href="/dashboard/purchase-orders/{{ po.id }}">{{ po.po_number }}</a>
-                        (₹{{ "%,.2f"|format(po.grand_total) }})
+                        (₹{{ "{:,.2f}".format(po.grand_total) }})
                     </div>
                     {% endif %}
                 </div>

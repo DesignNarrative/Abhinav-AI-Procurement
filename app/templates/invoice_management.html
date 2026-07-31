@@ -43,7 +43,7 @@
                         <td>{{ inv.vendor_name or "-" }}</td>
                         <td>{{ inv.po_number or "-" }}</td>
                         <td>{{ inv.invoice_date or "-" }}</td>
-                        <td class="text-end fw-bold">₹{{ "%,.2f"|format(inv.invoice_amount) }}</td>
+                        <td class="text-end fw-bold">₹{{ "{:,.2f}".format(inv.invoice_amount) }}</td>
                         <td class="text-center">
                             {% set m = inv.match_status %}
                             <span class="badge

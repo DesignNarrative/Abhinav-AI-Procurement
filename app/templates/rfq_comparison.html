@@ -91,7 +91,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in comparison.items %}
+                    {% for row in comparison['items'] %}
                     <tr>
                         <td>
                             <div class="fw-semibold">{{ row.material_name }}</div>
@@ -128,7 +128,7 @@
                         <td class="fw-bold">Grand Total (incl. freight / loading)</td>
                         {% for v in comparison.vendors %}
                         <td class="text-center fw-bold {% if loop.first %}text-success{% endif %}">
-                            ₹{{ "%,.2f"|format(v.grand_total) }}
+                            ₹{{ "{:,.2f}".format(v.grand_total) }}
                         </td>
                         {% endfor %}
                     </tr>
