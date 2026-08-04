@@ -61,6 +61,40 @@ def send_text_message(
     except UnicodeEncodeError:
         print("RESPONSE:", response.text.encode("ascii", "ignore").decode("ascii"))
 
+    # Log outbound message to inbox DB
+    try:
+        from app.database.database import SessionLocal
+        from app.models.supplier import Supplier
+        from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
+        
+        db = SessionLocal()
+        try:
+            clean_phone = phone_number.replace("+", "").strip()
+            clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+            
+            supplier = db.query(Supplier).filter(
+                (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                (Supplier.whatsapp_number == phone_number)
+            ).first()
+            
+            inbox_msg = WhatsAppInboxMessage(
+                supplier_id=supplier.id if supplier else None,
+                supplier_phone=phone_number,
+                message_text=message,
+                direction="outbound",
+                is_read=True
+            )
+            db.add(inbox_msg)
+            db.commit()
+            print(f"[INBOX] Logged outbound message to {phone_number} successfully.")
+        except Exception as e:
+            db.rollback()
+            print(f"[INBOX] Failed to log outbound message: {e}")
+        finally:
+            db.close()
+    except Exception as outer_e:
+        print(f"[INBOX] Outer exception logging outbound message: {outer_e}")
+
     return response.json()
 
 

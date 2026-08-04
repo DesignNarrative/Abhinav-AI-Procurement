@@ -154,3 +154,21 @@ def supplier_details(
             "supplier": supplier
         }
     )
+
+
+# =====================================================
+# WhatsApp Inbox Page
+# =====================================================
+
+@router.get(
+    "/inbox/",
+    response_class=HTMLResponse
+)
+def whatsapp_inbox_page(
+    request: Request
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="whatsapp_inbox.html",
+        context={"request": request}
+    )

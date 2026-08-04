@@ -35,6 +35,7 @@ from app.api.payment import router as payment_router
 from app.api.erp_sync import router as erp_sync_router
 from app.api.reminder import router as reminder_router
 from app.api.analytics import router as analytics_router
+from app.api.inbox import router as inbox_router
 
 from app.services.scheduler_service import start_scheduler, stop_scheduler
 
@@ -81,6 +82,7 @@ app.include_router(payment_router)
 app.include_router(erp_sync_router)
 app.include_router(reminder_router)
 app.include_router(analytics_router)
+app.include_router(inbox_router)
 
 
 @app.on_event("startup")

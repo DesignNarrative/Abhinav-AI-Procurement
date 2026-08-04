@@ -35,7 +35,10 @@ def process_whatsapp_message(
     message_text: str,
     db: Session
 ):
-    # Check if this sender phone number is already registered in the Supplier master table
+    # Check if this sender is PENDING or REJECTED — give them a status reply.
+    # NOTE: APPROVED suppliers are handled entirely by the webhook before this
+    # function is called, so they never reach here. The bot stays silent for
+    # approved suppliers chatting casually — the PM replies manually on WhatsApp.
     clean_phone = phone_number.replace("+", "").strip()
     clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
     supplier = db.query(Supplier).filter(
@@ -44,11 +47,7 @@ def process_whatsapp_message(
     ).first()
 
     if supplier:
-        if supplier.registration_status == "APPROVED":
-            return {
-                "reply": f"Hello! You are already registered with Abhinav Group as an approved supplier ({supplier.company_name}). To submit a quotation, please send the quote text or upload your quotation document (PDF/Image) here. 📄"
-            }
-        elif supplier.registration_status == "PENDING":
+        if supplier.registration_status == "PENDING":
             return {
                 "reply": f"Hello! Your registration application for {supplier.company_name} is currently under review by our purchase manager. We will notify you once it is approved! ⏳"
             }

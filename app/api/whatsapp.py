@@ -8,6 +8,7 @@ from app.models.supplier_conversation import (
     SupplierConversation
 )
 from app.models.supplier import Supplier
+from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
 
 from app.models.supplier_reference import (
     SupplierReference
@@ -825,25 +826,44 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     SupplierConversation.conversation_status == "IN_PROGRESS"
                 ).first()
 
+                # Log inbound message to inbox DB (for all numbers - approved or registering)
+                clean_phone = sender_phone.replace("+", "").strip()
+                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                supplier = db.query(Supplier).filter(
+                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                    (Supplier.whatsapp_number == sender_phone)
+                ).first()
+
+                try:
+                    inbox_msg = WhatsAppInboxMessage(
+                        supplier_id=supplier.id if supplier else None,
+                        supplier_phone=sender_phone,
+                        message_text=message_text,
+                        direction="inbound",
+                        is_read=False
+                    )
+                    db.add(inbox_msg)
+                    db.commit()
+                    print(f"[INBOX] Logged inbound text from {sender_phone} successfully.")
+                except Exception as e:
+                    db.rollback()
+                    print(f"[INBOX] Failed to log inbound text: {e}")
+
                 incoming = (message_text or "").strip().upper()
                 registration_keywords = ["HI", "HELLO", "HII", "START"]
 
                 routed_to_quotation = False
+                bot_should_stay_silent = False
 
-                if not active_conversation and incoming not in registration_keywords:
-                    # Check if sender is an approved supplier
-                    clean_phone = sender_phone.replace("+", "").strip()
-                    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
-                    supplier = db.query(Supplier).filter(
-                        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                        (Supplier.whatsapp_number == sender_phone)
-                    ).filter(
-                        Supplier.registration_status == "APPROVED"
-                    ).first()
+                # Check if sender is an approved supplier first (before checking registration keywords)
+                supplier_approved = db.query(Supplier).filter(
+                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                    (Supplier.whatsapp_number == sender_phone)
+                ).filter(
+                    Supplier.registration_status == "APPROVED"
+                ).first()
 
-                    # Only treat substantial messages that look like a quote as
-                    # quotations — greetings/short replies fall through to the
-                    # normal registration handler.
+                if supplier_approved:
                     text_lower = (message_text or "").lower()
                     quotation_signals = [
                         "quotation", "quote", "rate", "price", "amount",
@@ -851,7 +871,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     ]
                     looks_like_quotation = any(sig in text_lower for sig in quotation_signals)
 
-                    if supplier and looks_like_quotation:
+                    if looks_like_quotation:
                         from app.services.whatsapp_pipeline_service import process_whatsapp_text_quotation
                         db_passed_to_background = True
                         background_tasks.add_task(
@@ -865,8 +885,13 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                             "We have received your quotation and our AI is processing it. You will receive a confirmation shortly."
                         )
                         routed_to_quotation = True
+                    else:
+                        # Approved supplier chatting casually - bot stays silent.
+                        # (Already logged to inbox DB above)
+                        print(f"[INBOX] Casual message from approved supplier {sender_phone}: {message_text[:80]}")
+                        bot_should_stay_silent = True
 
-                if not routed_to_quotation:
+                if not routed_to_quotation and not bot_should_stay_silent:
                     response = process_whatsapp_message(
                         sender_phone,
                         message_text,
@@ -883,6 +908,30 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 print("DOCUMENT RECEIVED")
 
                 document = message["document"]
+                filename = document.get("filename", "document.pdf")
+
+                # Log inbound document to inbox DB
+                clean_phone = sender_phone.replace("+", "").strip()
+                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                supplier = db.query(Supplier).filter(
+                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                    (Supplier.whatsapp_number == sender_phone)
+                ).first()
+
+                try:
+                    inbox_msg = WhatsAppInboxMessage(
+                        supplier_id=supplier.id if supplier else None,
+                        supplier_phone=sender_phone,
+                        message_text=f"[Document: {filename}]",
+                        direction="inbound",
+                        is_read=False
+                    )
+                    db.add(inbox_msg)
+                    db.commit()
+                    print(f"[INBOX] Logged inbound document from {sender_phone} successfully.")
+                except Exception as e:
+                    db.rollback()
+                    print(f"[INBOX] Failed to log document: {e}")
 
                 conversation = db.query(
                     SupplierConversation
@@ -979,6 +1028,29 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 print("IMAGE RECEIVED")
 
                 image = message["image"]
+
+                # Log inbound image to inbox DB
+                clean_phone = sender_phone.replace("+", "").strip()
+                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                supplier = db.query(Supplier).filter(
+                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                    (Supplier.whatsapp_number == sender_phone)
+                ).first()
+
+                try:
+                    inbox_msg = WhatsAppInboxMessage(
+                        supplier_id=supplier.id if supplier else None,
+                        supplier_phone=sender_phone,
+                        message_text="[Image]",
+                        direction="inbound",
+                        is_read=False
+                    )
+                    db.add(inbox_msg)
+                    db.commit()
+                    print(f"[INBOX] Logged inbound image from {sender_phone} successfully.")
+                except Exception as e:
+                    db.rollback()
+                    print(f"[INBOX] Failed to log image: {e}")
 
                 conversation = db.query(
                     SupplierConversation

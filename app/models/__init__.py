@@ -3,3 +3,4 @@ from app.models.supplier_conversation import SupplierConversation
 
 from app.models.requirement import Requirement
 from app.models.requirement_material import RequirementMaterial
+from app.models.whatsapp_inbox_message import WhatsAppInboxMessage

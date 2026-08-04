@@ -1,0 +1,452 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}WhatsApp Inbox — Abhinav Group{% endblock %}
+
+{% block content %}
+<style>
+  .inbox-wrap {
+    display: flex;
+    height: calc(100vh - 120px);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.13);
+    background: #fff;
+  }
+
+  /* ── Contact List ── */
+  .inbox-contacts {
+    width: 320px;
+    min-width: 260px;
+    border-right: 1px solid #e9ecef;
+    display: flex;
+    flex-direction: column;
+    background: #f8faf9;
+  }
+  .inbox-contacts-header {
+    padding: 18px 16px 12px;
+    border-bottom: 1px solid #e9ecef;
+    background: #128c7e;
+    color: #fff;
+  }
+  .inbox-contacts-header h6 { margin: 0; font-weight: 700; font-size: 1rem; }
+  .inbox-contacts-header small { opacity: 0.8; font-size: 0.75rem; }
+  .inbox-contacts-list { flex: 1; overflow-y: auto; }
+
+  .contact-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.15s;
+  }
+  .contact-item:hover { background: #e8f5e9; }
+  .contact-item.active { background: #d0eedc; }
+
+  .contact-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: #128c7e;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .contact-info { flex: 1; min-width: 0; }
+  .contact-name { font-weight: 600; font-size: 0.9rem; color: #1a1a2e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .contact-preview { font-size: 0.75rem; color: #6c757d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .contact-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .contact-time { font-size: 0.68rem; color: #adb5bd; }
+  .badge-unread {
+    background: #25d366;
+    color: #fff;
+    border-radius: 50%;
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 700;
+  }
+
+  /* ── Chat Panel ── */
+  .inbox-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #ece5dd url("https://i.imgur.com/JQKQsXI.png") repeat;
+  }
+  .chat-header {
+    background: #128c7e;
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .chat-header-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1rem;
+  }
+  .chat-header-info .chat-name { font-weight: 700; font-size: 0.95rem; }
+  .chat-header-info .chat-phone { font-size: 0.75rem; opacity: 0.8; }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    gap: 8px;
+  }
+  .chat-empty i { font-size: 3rem; opacity: 0.3; }
+
+  .msg-bubble {
+    max-width: 65%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    position: relative;
+    word-break: break-word;
+  }
+  .msg-inbound {
+    background: #fff;
+    align-self: flex-start;
+    border-top-left-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .msg-outbound {
+    background: #dcf8c6;
+    align-self: flex-end;
+    border-top-right-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  .msg-time {
+    display: block;
+    font-size: 0.65rem;
+    color: #adb5bd;
+    margin-top: 3px;
+    text-align: right;
+  }
+  .msg-label {
+    font-size: 0.65rem;
+    color: #128c7e;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .chat-input-area {
+    background: #f0f0f0;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-top: 1px solid #ddd;
+  }
+  .chat-input-area textarea {
+    flex: 1;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 16px;
+    font-size: 0.875rem;
+    resize: none;
+    max-height: 100px;
+    min-height: 42px;
+    outline: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .btn-send {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #128c7e;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn-send:hover { background: #075e54; }
+  .btn-send:disabled { background: #adb5bd; cursor: not-allowed; }
+
+  /* No-conversation state */
+  .no-chat-selected {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    gap: 10px;
+    background: #f5f5f5;
+  }
+  .no-chat-selected i { font-size: 4rem; color: #128c7e; opacity: 0.3; }
+</style>
+
+<div class="d-flex align-items-center mb-3 gap-2">
+  <i class="bi bi-whatsapp text-success fs-4"></i>
+  <h4 class="mb-0 fw-bold">WhatsApp Inbox</h4>
+  <span class="badge bg-success ms-1" id="total-unread-badge" style="display:none;"></span>
+</div>
+
+<div class="inbox-wrap">
+  <!-- Contact List -->
+  <div class="inbox-contacts">
+    <div class="inbox-contacts-header">
+      <h6><i class="bi bi-chat-dots-fill me-2"></i>Conversations</h6>
+      <small>Supplier direct messages</small>
+    </div>
+    <div class="inbox-contacts-list" id="contact-list">
+      <div class="text-center py-4 text-muted">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <div class="mt-2 small">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="inbox-chat" id="chat-panel">
+    <div class="no-chat-selected" id="no-chat-placeholder">
+      <i class="bi bi-chat-text"></i>
+      <div class="fw-semibold" style="color:#555;">Select a conversation</div>
+      <small>Choose a supplier from the list to start chatting</small>
+    </div>
+
+    <!-- Hidden until a contact is selected -->
+    <div id="chat-active" style="display:none; flex-direction:column; height:100%;">
+      <div class="chat-header" id="chat-header">
+        <div class="chat-header-avatar" id="chat-avatar">M</div>
+        <div class="chat-header-info">
+          <div class="chat-name" id="chat-name">Supplier</div>
+          <div class="chat-phone" id="chat-phone">+91 XXXXXXXXXX</div>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty">
+          <i class="bi bi-chat-square-dots"></i>
+          <span>No messages yet</span>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <textarea id="reply-input" placeholder="Type a message..." rows="1"
+          onkeydown="handleEnterKey(event)"></textarea>
+        <button class="btn-send" id="btn-send" onclick="sendReply()">
+          <i class="bi bi-send-fill"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let activeSupplier = null;
+  let pollInterval = null;
+
+  // ── Initialise ──────────────────────────────────────────────────────────
+  document.addEventListener("DOMContentLoaded", () => {
+    loadContacts();
+    // Refresh contact list every 15 seconds
+    setInterval(loadContacts, 15000);
+    updateSidebarBadge();
+    setInterval(updateSidebarBadge, 15000);
+  });
+
+  // ── Load contact list ────────────────────────────────────────────────────
+  async function loadContacts() {
+    const res = await fetch("/inbox/conversations");
+    const data = await res.json();
+    renderContacts(data);
+  }
+
+  function renderContacts(conversations) {
+    const list = document.getElementById("contact-list");
+
+    if (conversations.length === 0) {
+      list.innerHTML = `
+        <div class="text-center py-5 text-muted">
+          <i class="bi bi-chat-square-text fs-2 d-block mb-2" style="opacity:0.3"></i>
+          <small>No conversations yet.<br>Supplier messages will appear here.</small>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = conversations.map(c => {
+      const initial = (c.company_name || "?")[0].toUpperCase();
+      const preview = c.last_message_direction === "outbound"
+        ? `<span style="color:#128c7e">You: </span>${escHtml(c.last_message)}`
+        : escHtml(c.last_message);
+      const timeStr = c.last_message_time ? formatTime(c.last_message_time) : "";
+      const unreadBadge = c.unread_count > 0
+        ? `<div class="badge-unread">${c.unread_count}</div>` : "";
+      const isActive = activeSupplier && activeSupplier.supplier_phone == c.supplier_phone ? "active" : "";
+      return `
+        <div class="contact-item ${isActive}" onclick="openConversation('${c.supplier_phone}')">
+          <div class="contact-avatar">${initial}</div>
+          <div class="contact-info">
+            <div class="contact-name">${escHtml(c.company_name)}</div>
+            <div class="contact-preview">${preview}</div>
+          </div>
+          <div class="contact-meta">
+            <span class="contact-time">${timeStr}</span>
+            ${unreadBadge}
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  // ── Open conversation ────────────────────────────────────────────────────
+  async function openConversation(phone) {
+    // Mark as read
+    await fetch(`/inbox/conversations/${encodeURIComponent(phone)}/mark-read`, { method: "POST" });
+
+    const res = await fetch(`/inbox/conversations/${encodeURIComponent(phone)}`);
+    const data = await res.json();
+
+    activeSupplier = { supplier_phone: phone, ...data.supplier };
+
+    // Update header
+    const initial = (data.supplier.company_name || "?")[0].toUpperCase();
+    document.getElementById("chat-avatar").textContent = initial;
+    document.getElementById("chat-name").textContent = data.supplier.company_name;
+    document.getElementById("chat-phone").textContent = "+" + data.supplier.whatsapp_number;
+
+    // Show chat panel
+    document.getElementById("no-chat-placeholder").style.display = "none";
+    const chatActive = document.getElementById("chat-active");
+    chatActive.style.display = "flex";
+
+    // Render messages
+    renderMessages(data.messages);
+
+    // Reload contact list to clear unread badges
+    loadContacts();
+    updateSidebarBadge();
+
+    // Poll for new messages every 8 seconds while conversation is open
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => refreshMessages(phone), 8000);
+  }
+
+  async function refreshMessages(phone) {
+    if (!activeSupplier || activeSupplier.supplier_phone != phone) return;
+    const res = await fetch(`/inbox/conversations/${encodeURIComponent(phone)}`);
+    const data = await res.json();
+    renderMessages(data.messages);
+    // Auto mark-read any new inbound
+    await fetch(`/inbox/conversations/${encodeURIComponent(phone)}/mark-read`, { method: "POST" });
+    loadContacts();
+    updateSidebarBadge();
+  }
+
+  function renderMessages(messages) {
+    const container = document.getElementById("chat-messages");
+    if (messages.length === 0) {
+      container.innerHTML = `<div class="chat-empty"><i class="bi bi-chat-square-dots"></i><span>No messages yet</span></div>`;
+      return;
+    }
+    container.innerHTML = messages.map(m => {
+      const cls = m.direction === "inbound" ? "msg-inbound" : "msg-outbound";
+      const timeStr = m.created_at ? formatTime(m.created_at) : "";
+      return `
+        <div class="msg-bubble ${cls}">
+          <div>${escHtml(m.message_text)}</div>
+          <span class="msg-time">${timeStr}${m.direction === "outbound" ? ' <i class="bi bi-check2-all text-primary"></i>' : ''}</span>
+        </div>`;
+    }).join("");
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // ── Send reply ───────────────────────────────────────────────────────────
+  async function sendReply() {
+    if (!activeSupplier) return;
+    const input = document.getElementById("reply-input");
+    const text = input.value.trim();
+    if (!text) return;
+
+    const btn = document.getElementById("btn-send");
+    btn.disabled = true;
+    input.disabled = true;
+
+    try {
+      const res = await fetch(`/inbox/conversations/${encodeURIComponent(activeSupplier.supplier_phone)}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      if (data.status === "sent") {
+        input.value = "";
+        await refreshMessages(activeSupplier.supplier_phone);
+      } else {
+        alert("Failed to send message. Please try again.");
+      }
+    } catch (e) {
+      alert("Network error. Please try again.");
+    } finally {
+      btn.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  }
+
+  function handleEnterKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendReply();
+    }
+  }
+
+  // ── Sidebar badge ────────────────────────────────────────────────────────
+  async function updateSidebarBadge() {
+    const res = await fetch("/inbox/unread-count");
+    const data = await res.json();
+    const badge = document.getElementById("total-unread-badge");
+    const sidebarBadge = document.getElementById("sidebar-inbox-badge");
+    const count = data.unread_count;
+    if (badge) {
+      badge.textContent = count;
+      badge.style.display = count > 0 ? "inline-block" : "none";
+    }
+    if (sidebarBadge) {
+      sidebarBadge.textContent = count;
+      sidebarBadge.style.display = count > 0 ? "inline-block" : "none";
+    }
+  }
+
+  // ── Utilities ────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatTime(isoStr) {
+    if (!isoStr) return "";
+    const d = new Date(isoStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+      return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    }
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  }
+</script>
+{% endblock %}
