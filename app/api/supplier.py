@@ -37,25 +37,6 @@ def get_pending_suppliers(
     ).all()
 
 
-@router.get("/approved")
-def get_approved_suppliers(
-    db: Session = Depends(get_db)
-):
-    """Approved suppliers as a lightweight JSON list for RFQ vendor selection."""
-    suppliers = db.query(Supplier).filter(
-        Supplier.registration_status == "APPROVED"
-    ).order_by(Supplier.company_name).all()
-
-    return [
-        {
-            "id": s.id,
-            "company_name": s.company_name,
-            "supplier_category": s.supplier_category,
-            "whatsapp_number": s.whatsapp_number
-        }
-        for s in suppliers
-    ]
-
 
 @router.get("/stats")
 def get_supplier_stats(
@@ -197,7 +178,7 @@ def get_approved_suppliers(
 ):
     return db.query(Supplier).filter(
         Supplier.registration_status == "APPROVED"
-    ).all()
+    ).order_by(Supplier.company_name).all()
     
     
 @router.get(

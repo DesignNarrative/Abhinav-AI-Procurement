@@ -164,6 +164,18 @@ def process_whatsapp_document_pipeline(
     file_path: str,
     original_filename: str
 ) -> dict:
+    try:
+        return _process_whatsapp_document_pipeline_impl(db, sender_phone, file_path, original_filename)
+    finally:
+        db.close()
+
+
+def _process_whatsapp_document_pipeline_impl(
+    db: Session,
+    sender_phone: str,
+    file_path: str,
+    original_filename: str
+) -> dict:
     """
     Orchestrator for inbound WhatsApp documents/images from approved suppliers:
     1. Look up the supplier by phone number.
@@ -487,6 +499,17 @@ def _mark_failed(
 
 
 def process_whatsapp_text_quotation(
+    db: Session,
+    sender_phone: str,
+    message_text: str
+) -> dict:
+    try:
+        return _process_whatsapp_text_quotation_impl(db, sender_phone, message_text)
+    finally:
+        db.close()
+
+
+def _process_whatsapp_text_quotation_impl(
     db: Session,
     sender_phone: str,
     message_text: str

@@ -35,6 +35,27 @@ def process_whatsapp_message(
     message_text: str,
     db: Session
 ):
+    # Check if this sender phone number is already registered in the Supplier master table
+    clean_phone = phone_number.replace("+", "").strip()
+    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+    supplier = db.query(Supplier).filter(
+        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+        (Supplier.whatsapp_number == phone_number)
+    ).first()
+
+    if supplier:
+        if supplier.registration_status == "APPROVED":
+            return {
+                "reply": f"Hello! You are already registered with Abhinav Group as an approved supplier ({supplier.company_name}). To submit a quotation, please send the quote text or upload your quotation document (PDF/Image) here. 📄"
+            }
+        elif supplier.registration_status == "PENDING":
+            return {
+                "reply": f"Hello! Your registration application for {supplier.company_name} is currently under review by our purchase manager. We will notify you once it is approved! ⏳"
+            }
+        elif supplier.registration_status == "REJECTED":
+            return {
+                "reply": f"Hello! Your registration application for {supplier.company_name} was unfortunately not approved. Please contact the purchase department for support. 📞"
+            }
 
     conversation = db.query(
         SupplierConversation

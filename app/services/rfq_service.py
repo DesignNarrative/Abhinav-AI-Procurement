@@ -11,21 +11,24 @@ class RFQService:
 
     @staticmethod
     def _generate_rfq_number(db: Session) -> str:
-        """Generate sequential RFQ number: RFQ-2026-001."""
+        """Generate sequential RFQ number using Postgres sequence to avoid concurrency race conditions."""
+        from sqlalchemy import text
+        db.execute(text("CREATE SEQUENCE IF NOT EXISTS rfq_number_seq START 1;"))
+        
+        # Auto-align the sequence to the highest existing RFQ number if it is fresh
+        seq_state = db.execute(text("SELECT last_value, is_called FROM rfq_number_seq")).first()
+        if seq_state and seq_state[0] == 1 and not seq_state[1]:
+            last = db.query(RFQ).order_by(RFQ.id.desc()).first()
+            if last and last.rfq_number:
+                try:
+                    max_seq = int(last.rfq_number.split("-")[-1])
+                    db.execute(text("SELECT setval('rfq_number_seq', :max_seq, true)"), {"max_seq": max_seq})
+                except (ValueError, IndexError):
+                    pass
+                    
         year = datetime.now().year
-        last = (
-            db.query(RFQ)
-            .order_by(RFQ.id.desc())
-            .first()
-        )
-        if last and last.rfq_number:
-            try:
-                seq = int(last.rfq_number.split("-")[-1]) + 1
-            except (ValueError, IndexError):
-                seq = 1
-        else:
-            seq = 1
-        return f"RFQ-{year}-{seq:03d}"
+        next_val = db.execute(text("SELECT nextval('rfq_number_seq')")).scalar()
+        return f"RFQ-{year}-{next_val:03d}"
 
     # ──────────────────────────────────────────────────
     # RFQ CRUD

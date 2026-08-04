@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.database.dependencies import get_db
+from app.database.database import SessionLocal
 
 from app.models.supplier_conversation import (
     SupplierConversation
@@ -770,7 +771,8 @@ def verify_webhook_signature(body: bytes, signature_header: str) -> bool:
 
 @router.post("/webhook")
 async def handle_inbound_webhook(request: Request, background_tasks: BackgroundTasks):
-
+    db = SessionLocal()
+    db_passed_to_background = False
     try:
         raw_body = await request.body()
         signature_header = request.headers.get("X-Hub-Signature-256")
@@ -814,8 +816,6 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     ""
                 )
 
-                db = next(get_db())
-
                 # Decide whether this text belongs to the registration flow or
                 # is a plain-text quotation from an already-approved supplier.
                 active_conversation = db.query(
@@ -853,6 +853,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                     if supplier and looks_like_quotation:
                         from app.services.whatsapp_pipeline_service import process_whatsapp_text_quotation
+                        db_passed_to_background = True
                         background_tasks.add_task(
                             process_whatsapp_text_quotation,
                             db,
@@ -883,8 +884,6 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                 document = message["document"]
 
-                db = next(get_db())
-
                 conversation = db.query(
                     SupplierConversation
                 ).filter(
@@ -914,6 +913,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         original_filename = document.get("filename", "quotation.pdf")
                         
                         from app.services.whatsapp_pipeline_service import process_whatsapp_document_pipeline
+                        db_passed_to_background = True
                         background_tasks.add_task(
                             process_whatsapp_document_pipeline,
                             db,
@@ -980,8 +980,6 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                 image = message["image"]
 
-                db = next(get_db())
-
                 conversation = db.query(
                     SupplierConversation
                 ).filter(
@@ -1010,6 +1008,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         original_filename = os.path.basename(file_path)
                         
                         from app.services.whatsapp_pipeline_service import process_whatsapp_document_pipeline
+                        db_passed_to_background = True
                         background_tasks.add_task(
                             process_whatsapp_document_pipeline,
                             db,
@@ -1065,8 +1064,6 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
             "status": "success"
         }
 
-        
-
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -1079,5 +1076,6 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
             "status": "error",
             "message": str(e)
         }
-
-
+    finally:
+        if not db_passed_to_background:
+            db.close()

@@ -203,6 +203,7 @@ def create_draft_quotation(
     # ── 6. Create QuotationItem records ───────────────────────────────────────
     items_created = 0
     unmatched_items = []
+    matched_items_total = 0.0
 
     for ext_item in payload.line_items:
         ext_name = _get_field_value(ext_item.material_name, "")
@@ -235,6 +236,10 @@ def create_draft_quotation(
         taxable = float(rate) * (1 - float(discount) / 100.0)
         landed = taxable * (1 + float(tax) / 100.0)
 
+        calculated_total = (float(qty) * landed) if qty else 0.0
+        item_total = float(total) if total else calculated_total
+        matched_items_total += item_total
+
         q_item = QuotationItem(
             quotation_id=quotation.id,
             rfq_item_id=best_rfq_item.id,
@@ -247,11 +252,14 @@ def create_draft_quotation(
             tax_percent=float(tax) if tax else 0.0,
             freight_amount=0.0,
             final_landed_rate=round(landed, 3),
-            total_item_amount=float(total) if total else 0.0,
+            total_item_amount=item_total,
             remarks=_get_field_value(ext_item.remarks, None),
         )
         db.add(q_item)
         items_created += 1
+
+    # Recalculate quotation grand total to ensure mathematical consistency
+    quotation.grand_total = float(matched_items_total) + float(quotation.freight_amount_total) + float(quotation.loading_unloading_total)
 
     db.commit()
     db.refresh(quotation)
