@@ -138,30 +138,12 @@ Supplier Management
                                 All
                             </option>
 
-                            <option value="Civil"
-                                {% if category == "Civil" %}selected{% endif %}>
-                                Civil
-                            </option>
-
-                            <option value="Steel"
-                                {% if category == "Steel" %}selected{% endif %}>
-                                Steel
-                            </option>
-
-                            <option value="Electrical"
-                                {% if category == "Electrical" %}selected{% endif %}>
-                                Electrical
-                            </option>
-
-                            <option value="Cement"
-                                {% if category == "Cement" %}selected{% endif %}>
-                                Cement
-                            </option>
-
-                            <option value="Food"
-                                {% if category == "Food" %}selected{% endif %}>
-                                Food
-                            </option>
+                            {% for cat in categories %}
+                                <option value="{{ cat }}"
+                                    {% if category == cat %}selected{% endif %}>
+                                    {{ cat }}
+                                </option>
+                            {% endfor %}
 
                         </select>
 
@@ -237,10 +219,12 @@ Supplier Management
 
                         <tr>
 
-                            <th>ID</th>
-                            <th>Company</th>
+                            <th>Code / ID</th>
+                            <th>Company Name</th>
+                            <th>GST Number</th>
                             <th>Category</th>
-                            <th>Contact</th>
+                            <th>Contact Person</th>
+                            <th>Mobile</th>
                             <th>Status</th>
                             <th class="text-center">Action</th>
 
@@ -255,31 +239,33 @@ Supplier Management
                         <tr>
 
                             <td>
-
-                                {{ supplier.id }}
-
+                                {% if supplier.registration_status == "APPROVED" %}
+                                    <span class="badge bg-secondary">{{ supplier.supplier_code or "Pending Code" }}</span>
+                                {% else %}
+                                    <span class="text-muted">ID: {{ supplier.id }}</span>
+                                {% endif %}
                             </td>
 
                             <td>
-
                                 <strong>
-
                                     {{ supplier.company_name }}
-
                                 </strong>
-
                             </td>
 
                             <td>
+                                {{ supplier.gst_number or "-" }}
+                            </td>
 
+                            <td>
                                 {{ supplier.supplier_category or "-" }}
-
                             </td>
 
                             <td>
-
                                 {{ supplier.contact_person_name }}
+                            </td>
 
+                            <td>
+                                {{ supplier.whatsapp_number }}
                             </td>
 
                             <td>
@@ -320,7 +306,7 @@ Supplier Management
 
                                     <i class="bi bi-eye"></i>
 
-                                    View
+                                    View Profile
 
                                 </a>
 
@@ -332,7 +318,7 @@ Supplier Management
 
                         <tr>
 
-                            <td colspan="6" class="text-center py-5">
+                            <td colspan="8" class="text-center py-5">
 
                                 <h6 class="text-muted">
 

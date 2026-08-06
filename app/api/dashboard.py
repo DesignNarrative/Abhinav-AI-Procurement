@@ -69,12 +69,23 @@ def supplier_management(
 
     if category:
         query = query.filter(
-            Supplier.supplier_category.ilike(category)
+            Supplier.supplier_category.ilike(f"%{category}%")
         )
 
     suppliers = query.order_by(
         Supplier.created_at.desc()
     ).all()
+
+    # Dynamic extraction of all unique categories present in the database
+    all_suppliers = db.query(Supplier).all()
+    categories_set = set()
+    for s in all_suppliers:
+        if s.supplier_category:
+            for cat in s.supplier_category.split(","):
+                cat = cat.strip()
+                if cat:
+                    categories_set.add(cat)
+    categories = sorted(list(categories_set))
 
     return templates.TemplateResponse(
         request=request,
@@ -84,7 +95,8 @@ def supplier_management(
             "suppliers": suppliers,
             "search": search,
             "status": status,
-            "category": category
+            "category": category,
+            "categories": categories
         }
     )
 
