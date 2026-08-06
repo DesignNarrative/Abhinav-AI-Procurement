@@ -27,14 +27,11 @@ def map_conversation_to_supplier(data: dict):
 
         "contact_person_email":
             None
-            if data.get("contact_person_email") == "SKIP"
+            if data.get("contact_person_email") in (None, "SKIP", "skip")
             else data.get("contact_person_email"),
 
         "whatsapp_number":
             data.get("whatsapp_number"),
-
-        "supplier_category":
-            data.get("supplier_category"),
 
         "material_types":
             data.get("material_types"),
@@ -60,25 +57,16 @@ def map_conversation_to_supplier(data: dict):
 
         "msme_number":
             None
-            if str(data.get("msme_number")).upper() == "SKIP"
+            if str(data.get("msme_number", "")).upper() in ("SKIP", "NONE", "")
             else data.get("msme_number"),
 
         "msme_certificate_path":
             None
-            if str(data.get("msme_certificate_path")).upper() == "SKIP"
+            if str(data.get("msme_certificate_path", "")).upper() in ("SKIP", "NONE", "")
             else data.get("msme_certificate_path"),
 
         "gst_certificate_path":
             data.get("gst_certificate_path"),
-
-        "references":
-            data.get("references"),
-
-        "authorized_person_name":
-            data.get("authorized_person_name"),
-
-        "designation":
-            data.get("designation"),
 
         "declaration_accepted":
             declaration_value == "YES"

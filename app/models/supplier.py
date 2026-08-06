@@ -39,8 +39,9 @@ class Supplier(Base):
     gst_number = Column(
         String(15),
         unique=True,
-        nullable=False
+        nullable=True
     )
+
 
     registered_address = Column(
         Text,

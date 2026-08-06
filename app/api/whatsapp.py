@@ -88,10 +88,13 @@ def start_registration(
     db.commit()
     db.refresh(conversation)
 
+    from app.services.whatsapp_registration_service import _get_dynamic_question
+    q1_text = _get_dynamic_question("company_name", {})
+
     return {
         "message": "Supplier Registration Started",
         "conversation_id": conversation.id,
-        "next_question": QUESTION_MAP["company_name"]
+        "next_question": q1_text
     }
 
 
@@ -118,244 +121,179 @@ def process_message(
     current_step = conversation.current_step
 
     data = conversation.collected_data or {}
-    
-    # Date Validation
-    if current_step == "date_of_incorporation":
 
-        if not validate_date(answer):
+    incoming_upper = answer.strip().upper()
 
-            return {
-                "error":
-                "Date must be in YYYY-MM-DD format"
-            }
-            
-    # Declaration Validation
+    # ── Detect spelling typos for CHANGE command ──────────────────────────────
+    from app.services.whatsapp_registration_service import _CHANGE_PATTERN, _CHANGE_TYPO_PATTERN, _STANDALONE_NUMBER_PATTERN
+    typo_match = _CHANGE_TYPO_PATTERN.match(answer.strip())
+    if typo_match and not _CHANGE_PATTERN.match(answer.strip()):
+        question_num = int(typo_match.group(2))
+        return {
+            "error": f"Did you mean to change an answer? Please type exactly: CHANGE {question_num}"
+        }
+
+    # ── Detect standalone number shortcut at summary step ─────────────────────
     if current_step == "declaration_accepted":
+        standalone_match = _STANDALONE_NUMBER_PATTERN.match(answer.strip())
+        if standalone_match:
+            question_num = int(standalone_match.group(1))
+            # Translate standalone number to a perfect CHANGE N command
+            answer = f"CHANGE {question_num}"
+            incoming_upper = answer.strip().upper()
 
-        value = answer.strip().upper()
+    # ── Handle CHANGE N command ───────────────────────────────────────────────
+    change_match = _CHANGE_PATTERN.match(answer.strip())
+    if change_match:
+        question_num = int(change_match.group(1))
+        # Build visible step list (respecting MSME skip for display)
+        skipped_msme = str(data.get("is_msme", "")).upper() == "NO"
+        from app.services.whatsapp_registration_service import _DATA_STEPS
+        visible_steps = []
+        for s in _DATA_STEPS:
+            if skipped_msme and s in ("msme_number", "msme_certificate_path"):
+                continue
+            visible_steps.append(s)
 
-        if value not in ["YES", "NO"]:
-
-            return {
-                "error":
-                "Please enter YES or NO"
-            }
-
-    # GST Validation
-    if current_step == "gst_number":
-
-        if not validate_gst(answer):
-            return {
-                "error":
-                "Invalid GST Number. Example: 27ABCDE1234F1Z5"
-            }
-
-        existing_gst = db.query(
-            Supplier
-        ).filter(
-            Supplier.gst_number == answer.upper()
-        ).first()
-
-        if existing_gst:
-            return {
-                "error":
-                "GST Number already registered"
-            }
-
-
-
-    # WhatsApp Validation
-    if current_step == "whatsapp_number":
-
-        if not validate_mobile(answer):
-            return {
-                "error":
-                "WhatsApp number must be exactly 10 digits"
-            }
-
-    # Email Validation
-    if current_step == "contact_person_email":
-
-        if not validate_email(answer):
-            return {
-                "error":
-                "Invalid Email Address"
-            }
-
-    # IFSC Validation
-    if current_step == "bank_ifsc":
-
-        if not validate_ifsc(answer):
-            return {
-                "error":
-                "Invalid IFSC Code"
-            }
-
-    # Bank Account Validation
-    if current_step == "bank_account_number":
-
-        if not validate_bank_account(answer):
-            return {
-                "error":
-                "Invalid Bank Account Number"
-            }
-    
-    # Convert Declaration To Boolean
-    if current_step == "declaration_accepted":
-
-        data[current_step] = (
-            answer.strip().upper() == "YES"
-        )
-    
-    # Handle SKIP
-
-    if isinstance(answer, str) and answer.strip().upper() == "SKIP":
-
-        data[current_step] = None
-
-
-
-    elif current_step != "declaration_accepted":
-
-        data[current_step] = answer
-
-    # MSME Logic
-    if current_step == "is_msme":
-
-        value = answer.strip().upper()
-
-        if value not in ["YES", "NO"]:
-            return {
-                "error": "Please enter YES or NO"
-            }
-
-        data[current_step] = (value == "YES")
-
-        if value == "NO":
-
-            current_index = REGISTRATION_STEPS.index(
-                current_step
-            )
-
-            next_index = current_index + 3
-
-            next_step = REGISTRATION_STEPS[next_index]
-
+        if 1 <= question_num <= len(visible_steps):
+            target_step = visible_steps[question_num - 1]
+            data["_edit_mode"] = True
             conversation.collected_data = data
-            conversation.current_step = next_step
-
+            conversation.current_step = target_step
             db.commit()
             db.refresh(conversation)
-
+            from app.services.whatsapp_registration_service import _get_dynamic_question
+            q_text = _get_dynamic_question(target_step, data)
             return {
-                "saved_field": current_step,
-                "saved_value": False,
-                "next_step": next_step,
-                "next_question": QUESTION_MAP[next_step]
+                "saved_field": "current_step",
+                "saved_value": target_step,
+                "next_step": target_step,
+                "next_question": q_text
+            }
+        else:
+            return {
+                "error": f"Invalid number. Please type CHANGE followed by a number between 1 and {len(visible_steps)}."
             }
 
-    current_index = REGISTRATION_STEPS.index(
-        current_step
-    )
+    # ── MSME Certificate — allow SKIP, reject other plain text ────────────────
+    if current_step == "msme_certificate_path":
+        if incoming_upper == "SKIP":
+            data[current_step] = "SKIP"
+        elif not (answer.startswith("uploads/") or answer.startswith("uploads\\")):
+            return {
+                "error": "Please upload a valid document or image file (PDF/JPG/PNG), or type SKIP."
+            }
 
+    # ── GST Certificate — mandatory, reject skip/plain text ───────────────────
+    if current_step == "gst_certificate_path":
+        if not (answer.startswith("uploads/") or answer.startswith("uploads\\")):
+            return {
+                "error": "GST Certificate is mandatory. Please upload a valid document or image file (PDF/JPG/PNG)."
+            }
+
+    # ── Declaration Submit step strict validation ────────────────────────────
+    if current_step == "declaration_accepted":
+        if incoming_upper != "YES":
+            return {
+                "error": "Please reply YES to submit, or type CHANGE [number] to edit an answer."
+            }
+
+    # Handle SKIP — save None for skippable fields
+    if isinstance(answer, str) and answer.strip().upper() == "SKIP":
+        data[current_step] = None
+
+    # Convert Declaration to Boolean
+    elif current_step == "declaration_accepted":
+        data[current_step] = True
+
+    else:
+        data[current_step] = answer
+
+    edit_mode = data.get("_edit_mode") is True
+
+    # MSME Skip Logic: if answered NO, jump to gst_number (skip msme_number + msme_certificate_path)
+    if current_step == "is_msme":
+        from app.services.whatsapp_registration_service import _get_dynamic_question
+        value = answer.strip().upper()
+        data[current_step] = value
+        if value == "NO":
+            data["msme_number"] = None
+            data["msme_certificate_path"] = None
+            if edit_mode:
+                data["_edit_mode"] = False
+                conversation.collected_data = data
+                conversation.current_step = "declaration_accepted"
+                db.commit()
+                db.refresh(conversation)
+                return {
+                    "saved_field": current_step,
+                    "saved_value": False,
+                    "next_step": "declaration_accepted",
+                    "next_question": "Declaration summary shown"
+                }
+            else:
+                conversation.collected_data = data
+                conversation.current_step = "gst_number"
+                db.commit()
+                db.refresh(conversation)
+                q_text = _get_dynamic_question("gst_number", data)
+                return {
+                    "saved_field": current_step,
+                    "saved_value": False,
+                    "next_step": "gst_number",
+                    "next_question": q_text
+                }
+        else:
+            conversation.collected_data = data
+            conversation.current_step = "msme_number"
+            db.commit()
+            db.refresh(conversation)
+            q_text = _get_dynamic_question("msme_number", data)
+            return {
+                "saved_field": current_step,
+                "saved_value": True,
+                "next_step": "msme_number",
+                "next_question": QUESTION_MAP["msme_number"]
+            }
+
+    # Edit Mode Routing: Jump back to summary for other steps
+    if edit_mode and current_step not in ("is_msme", "msme_number"):
+        data["_edit_mode"] = False
+        conversation.collected_data = data
+        conversation.current_step = "declaration_accepted"
+        db.commit()
+        db.refresh(conversation)
+        return {
+            "saved_field": current_step,
+            "saved_value": data.get(current_step),
+            "next_step": "declaration_accepted",
+            "next_question": "Declaration summary shown"
+        }
+
+    current_index = REGISTRATION_STEPS.index(current_step)
     next_index = current_index + 1
 
     # REGISTRATION COMPLETE
     if next_index >= len(REGISTRATION_STEPS):
-
+        data.pop("_edit_mode", None)
         conversation.collected_data = data
         conversation.conversation_status = "COMPLETED"
 
-        existing_gst = db.query(
-            Supplier
-        ).filter(
-            Supplier.gst_number == data.get(
-                "gst_number"
-            )
-        ).first()
+        supplier_data = map_conversation_to_supplier(data)
 
-        if existing_gst:
-            return {
-                "error": "GST Number already registered"
-            }
-
-        existing_pan = db.query(
-            Supplier
-        ).filter(
-            Supplier.pan_number == data.get(
-                "pan_number"
-            )
-        ).first()
-
-        if existing_pan:
-            return {
-                "error": "PAN Number already registered"
-            }
-
-        supplier_data = map_conversation_to_supplier(
-            data
-        )
-
-        new_supplier = Supplier(
-            **supplier_data
-        )
-
+        new_supplier = Supplier(**supplier_data)
         db.add(new_supplier)
-
         db.commit()
-
         db.refresh(new_supplier)
-        
-        # Reference 1
-
-        if data.get("reference_1_company"):
-
-            reference_1 = SupplierReference(
-
-                supplier_id=new_supplier.id,
-
-                company_name=data.get(
-                    "reference_1_company"
-                ),
-
-                contact_person=data.get(
-                    "reference_1_contact_person"
-                ),
-
-                contact_number=data.get(
-                    "reference_1_contact_number"
-                )
-            )
-
-            db.add(reference_1)
-
-         # Reference 2
-
-        if data.get("reference_2_company"):
-
-            reference_2 = SupplierReference(
-
-                supplier_id=new_supplier.id,
-
-                company_name=data.get(
-                    "reference_2_company"
-                ),
-
-                contact_person=data.get(
-                    "reference_2_contact_person"
-                ),
-
-                contact_number=data.get(
-                    "reference_2_contact_number"
-                )
-            )
-
-            db.add(reference_2)
-
-        db.commit()
 
         return {
             "message": "Supplier Registration Completed",
+            "reply": (
+                f"✅ Registration completed successfully. Supplier ID: {new_supplier.id}\n\n"
+                "Thank you for registering with Abhinav Group!\n\n"
+                "💡 For any future updates to your registered information, please message this chat directly "
+                "and our Purchase Manager will assist you manually."
+            ),
             "supplier_id": new_supplier.id,
             "registration_status": new_supplier.registration_status
         }
@@ -368,12 +306,16 @@ def process_message(
     db.commit()
     db.refresh(conversation)
 
+    from app.services.whatsapp_registration_service import _get_dynamic_question
+    q_text = _get_dynamic_question(next_step, data)
+
     return {
         "saved_field": current_step,
-        "saved_value": data[current_step],
+        "saved_value": data.get(current_step),
         "next_step": next_step,
-        "next_question": QUESTION_MAP[next_step]
+        "next_question": q_text
     }
+
 
 @router.delete(
     "/reset-conversation/{phone_number}"
@@ -850,7 +792,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     print(f"[INBOX] Failed to log inbound text: {e}")
 
                 incoming = (message_text or "").strip().upper()
-                registration_keywords = ["HI", "HELLO", "HII", "START"]
+                registration_keywords = ["HI", "HELLO", "HII", "HEY", "HELO", "HAI", "HIYA", "START"]
 
                 routed_to_quotation = False
                 bot_should_stay_silent = False
@@ -887,7 +829,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         routed_to_quotation = True
                     else:
                         # Approved supplier chatting casually - bot stays silent.
-                        # (Already logged to inbox DB above)
+                        # PM will reply manually from the dashboard inbox.
                         print(f"[INBOX] Casual message from approved supplier {sender_phone}: {message_text[:80]}")
                         bot_should_stay_silent = True
 

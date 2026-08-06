@@ -17,7 +17,8 @@ class SupplierCreate(BaseModel):
 
     principal_business: Optional[str] = None
 
-    gst_number: str
+    gst_number: Optional[str] = None
+
 
     registered_address: str
 
