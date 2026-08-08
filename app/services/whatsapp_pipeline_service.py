@@ -314,20 +314,16 @@ def _finalize_document(
     if doc_type not in ["QUOTATION", "INVOICE"]:
         logger.info(
             f"Document UUID {uuid} classified as {doc_type}. "
-            f"Sending PM redirect message to {sender_phone}."
+            f"Bot stays silent — file visible in dashboard inbox for PM review."
         )
-        # This file is not a quotation — redirect the supplier to the PM directly.
-        send_text_message(
-            sender_phone,
-            f"Please send quotations only (PDF, image, or text).\n"
-            f"For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
-            f"+91 7219550051"
-        )
+        # Not a quotation/invoice — bot stays silent.
+        # The file is already logged in WhatsAppInboxMessage so PM can see and reply from the dashboard.
+        print(f"[PIPELINE] doc_type='{doc_type}' — bot silent, PM handles from inbox.")
         return {
-            "status": "redirected",
+            "status": "logged",
             "document_uuid": uuid,
             "document_type": doc_type,
-            "action": "pm_redirect_sent"
+            "action": "silent_for_manual_pm_review"
         }
 
     # Trigger Phase 6: Parse with LLM

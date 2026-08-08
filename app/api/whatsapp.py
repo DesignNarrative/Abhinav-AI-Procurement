@@ -831,15 +831,9 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         )
                         routed_to_quotation = True
                     else:
-                        # Approved supplier sending a casual message — not a quotation.
-                        # Redirect them to the PM for anything that isn't a quotation.
+                        # Approved supplier sending a casual text — not a quotation.
+                        # Bot stays silent; PM replies manually from the dashboard inbox.
                         print(f"[INBOX] Casual message from approved supplier {sender_phone}: {message_text[:80]}")
-                        send_text_message(
-                            sender_phone,
-                            "Please send quotations only (PDF, image, or text).\n"
-                            "For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
-                            "+91 7219550051"
-                        )
                         bot_should_stay_silent = True
 
                 if not routed_to_quotation and not bot_should_stay_silent:
@@ -1132,13 +1126,8 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     db.rollback()
                     print(f"[INBOX] Failed to log video: {e}")
 
-                # Videos cannot be quotations — redirect supplier to PM directly.
-                send_text_message(
-                    normalized_sender_phone,
-                    "Please send quotations only (PDF, image, or text).\n"
-                    "For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
-                    "+91 7219550051"
-                )
+                # Videos cannot be quotations — logged in inbox, PM handles from dashboard.
+                print(f"[INBOX] Video from {normalized_sender_phone} — bot stays silent, PM will reply from inbox.")
 
         return {
             "status": "success"
