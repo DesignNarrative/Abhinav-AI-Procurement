@@ -35,9 +35,14 @@ from fastapi import HTTPException
 
 def download_media(
     media_id: str,
-    upload_folder: str
+    upload_folder: str,
+    original_filename: str = None
 ):
-
+    """
+    Download a WhatsApp media file by media_id to upload_folder.
+    original_filename is used as a fallback to determine file extension
+    when WhatsApp CDN returns an ambiguous Content-Type (e.g. application/octet-stream).
+    """
     os.makedirs(
         upload_folder,
         exist_ok=True
@@ -74,19 +79,43 @@ def download_media(
     content_type = response.headers.get(
         "Content-Type",
         ""
-    ).lower()
+    ).lower().split(";")[0].strip()
 
     extension_map = {
         "application/pdf": ".pdf",
         "image/jpeg": ".jpg",
         "image/jpg": ".jpg",
-        "image/png": ".png"
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/3gpp": ".3gp",
+        "video/quicktime": ".mov",
+        "audio/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/vnd.ms-excel": ".xls",
+        "application/zip": ".zip",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     }
 
-    file_extension = extension_map.get(
-        content_type,
-        ".bin"
-    )
+    file_extension = extension_map.get(content_type, "")
+
+    # Fallback: if content-type is ambiguous, derive extension from the original
+    # filename supplied by WhatsApp document metadata (e.g. "Quotation.pdf" -> ".pdf").
+    if not file_extension and original_filename:
+        fallback_ext = os.path.splitext(original_filename)[1].lower()
+        if fallback_ext:
+            file_extension = fallback_ext
+            print(f"[DOWNLOAD_MEDIA] Content-Type '{content_type}' unrecognized; "
+                  f"using extension '{file_extension}' from original filename '{original_filename}'")
+
+    # Final fallback if still unknown
+    if not file_extension:
+        file_extension = ".bin"
+        print(f"[DOWNLOAD_MEDIA] WARNING: Could not determine file extension. "
+              f"content_type='{content_type}', original_filename='{original_filename}'. Saved as .bin")
 
     filename = (
         str(uuid.uuid4())
@@ -116,6 +145,8 @@ def download_media(
                         detail="File download exceeded maximum allowed size of 10 MB."
                     )
                 file.write(chunk)
+
+    print(f"[DOWNLOAD_MEDIA] Saved: {file_path} ({bytes_downloaded} bytes, type: {content_type})")
 
     # Convert Windows path separators to URL separators
     return file_path.replace("\\", "/")

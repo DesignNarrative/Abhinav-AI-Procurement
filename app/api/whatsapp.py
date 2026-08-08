@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -769,24 +770,26 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 ).first()
 
                 # Log inbound message to inbox DB (for all numbers - approved or registering)
-                clean_phone = sender_phone.replace("+", "").strip()
-                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                from app.services.whatsapp_service import normalize_phone_number
+                normalized_sender_phone = normalize_phone_number(sender_phone)
+                clean_phone_10 = normalized_sender_phone[-10:]
                 supplier = db.query(Supplier).filter(
                     (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == sender_phone)
+                    (Supplier.whatsapp_number == normalized_sender_phone)
                 ).first()
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
-                        supplier_phone=sender_phone,
+                        supplier_phone=normalized_sender_phone,
                         message_text=message_text,
                         direction="inbound",
-                        is_read=False
+                        is_read=False,
+                        media_type="text"
                     )
                     db.add(inbox_msg)
                     db.commit()
-                    print(f"[INBOX] Logged inbound text from {sender_phone} successfully.")
+                    print(f"[INBOX] Logged inbound text from {normalized_sender_phone} successfully.")
                 except Exception as e:
                     db.rollback()
                     print(f"[INBOX] Failed to log inbound text: {e}")
@@ -828,9 +831,15 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         )
                         routed_to_quotation = True
                     else:
-                        # Approved supplier chatting casually - bot stays silent.
-                        # PM will reply manually from the dashboard inbox.
+                        # Approved supplier sending a casual message — not a quotation.
+                        # Redirect them to the PM for anything that isn't a quotation.
                         print(f"[INBOX] Casual message from approved supplier {sender_phone}: {message_text[:80]}")
+                        send_text_message(
+                            sender_phone,
+                            "Please send quotations only (PDF, image, or text).\n"
+                            "For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
+                            "+91 7219550051"
+                        )
                         bot_should_stay_silent = True
 
                 if not routed_to_quotation and not bot_should_stay_silent:
@@ -853,24 +862,32 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 filename = document.get("filename", "document.pdf")
 
                 # Log inbound document to inbox DB
-                clean_phone = sender_phone.replace("+", "").strip()
-                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                from app.services.whatsapp_service import normalize_phone_number
+                normalized_sender_phone = normalize_phone_number(sender_phone)
+                clean_phone_10 = normalized_sender_phone[-10:]
                 supplier = db.query(Supplier).filter(
                     (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == sender_phone)
+                    (Supplier.whatsapp_number == normalized_sender_phone)
                 ).first()
+
+                # Download document to uploads/media directory for inbox rendering
+                media_local_path = "uploads/media"
+                file_path = download_media(document["id"], media_local_path, original_filename=filename)
+                filename_only = os.path.basename(file_path)
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
-                        supplier_phone=sender_phone,
-                        message_text=f"[Document: {filename}]",
+                        supplier_phone=normalized_sender_phone,
+                        message_text=f"Received document: {filename}",
                         direction="inbound",
-                        is_read=False
+                        is_read=False,
+                        media_type="document",
+                        media_path=f"uploads/media/{filename_only}"
                     )
                     db.add(inbox_msg)
                     db.commit()
-                    print(f"[INBOX] Logged inbound document from {sender_phone} successfully.")
+                    print(f"[INBOX] Logged inbound document from {normalized_sender_phone} successfully.")
                 except Exception as e:
                     db.rollback()
                     print(f"[INBOX] Failed to log document: {e}")
@@ -896,27 +913,27 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     ).first()
 
                     if supplier:
-                        # Ingest quotation document in background
-                        file_path = download_media(
-                            document["id"],
-                            "uploads/quotation_documents"
-                        )
-                        original_filename = document.get("filename", "quotation.pdf")
-                        
+                        # The file is already in uploads/media/ for inbox display.
+                        # Copy it to uploads/quotation_documents/ so the pipeline can
+                        # ingest, extract text, and classify it independently.
+                        original_filename = document.get("filename", "document.pdf")
+                        import shutil as _shutil
+                        pipeline_dir = "uploads/quotation_documents"
+                        os.makedirs(pipeline_dir, exist_ok=True)
+                        pipeline_file_path = os.path.join(pipeline_dir, filename_only)
+                        _shutil.copy2(file_path, pipeline_file_path)
+
                         from app.services.whatsapp_pipeline_service import process_whatsapp_document_pipeline
                         db_passed_to_background = True
                         background_tasks.add_task(
                             process_whatsapp_document_pipeline,
                             db,
                             sender_phone,
-                            file_path,
+                            pipeline_file_path,
                             original_filename
                         )
-                        
-                        send_text_message(
-                            sender_phone,
-                            "We have received your document and our AI is processing it. You will receive a confirmation shortly."
-                        )
+                        # NOTE: No immediate send_text_message here.
+                        # The pipeline sends receipt ONLY if classified as QUOTATION/INVOICE.
                     else:
                         send_text_message(
                             sender_phone,
@@ -972,24 +989,32 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 image = message["image"]
 
                 # Log inbound image to inbox DB
-                clean_phone = sender_phone.replace("+", "").strip()
-                clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+                from app.services.whatsapp_service import normalize_phone_number
+                normalized_sender_phone = normalize_phone_number(sender_phone)
+                clean_phone_10 = normalized_sender_phone[-10:]
                 supplier = db.query(Supplier).filter(
                     (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == sender_phone)
+                    (Supplier.whatsapp_number == normalized_sender_phone)
                 ).first()
+
+                # Download image to uploads/media directory for inbox rendering
+                media_local_path = "uploads/media"
+                file_path = download_media(image["id"], media_local_path, original_filename="image.jpg")
+                filename_only = os.path.basename(file_path)
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
-                        supplier_phone=sender_phone,
-                        message_text="[Image]",
+                        supplier_phone=normalized_sender_phone,
+                        message_text="Received photo",
                         direction="inbound",
-                        is_read=False
+                        is_read=False,
+                        media_type="image",
+                        media_path=f"uploads/media/{filename_only}"
                     )
                     db.add(inbox_msg)
                     db.commit()
-                    print(f"[INBOX] Logged inbound image from {sender_phone} successfully.")
+                    print(f"[INBOX] Logged inbound image from {normalized_sender_phone} successfully.")
                 except Exception as e:
                     db.rollback()
                     print(f"[INBOX] Failed to log image: {e}")
@@ -1013,28 +1038,27 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     ).first()
 
                     if supplier:
-                        # Ingest quotation image in background
-                        file_path = download_media(
-                            image["id"],
-                            "uploads/quotation_documents"
-                        )
-                        import os
+                        # The file is already in uploads/media/ for inbox display.
+                        # Copy it to uploads/quotation_documents/ so the pipeline can
+                        # ingest, extract text (or Vision OCR), and classify it independently.
                         original_filename = os.path.basename(file_path)
-                        
+                        import shutil as _shutil
+                        pipeline_dir = "uploads/quotation_documents"
+                        os.makedirs(pipeline_dir, exist_ok=True)
+                        pipeline_file_path = os.path.join(pipeline_dir, filename_only)
+                        _shutil.copy2(file_path, pipeline_file_path)
+
                         from app.services.whatsapp_pipeline_service import process_whatsapp_document_pipeline
                         db_passed_to_background = True
                         background_tasks.add_task(
                             process_whatsapp_document_pipeline,
                             db,
                             sender_phone,
-                            file_path,
+                            pipeline_file_path,
                             original_filename
                         )
-                        
-                        send_text_message(
-                            sender_phone,
-                            "We have received your document and our AI is processing it. You will receive a confirmation shortly."
-                        )
+                        # NOTE: No immediate send_text_message here.
+                        # The pipeline sends receipt ONLY if classified as QUOTATION/INVOICE.
                     else:
                         send_text_message(
                             sender_phone,
@@ -1073,6 +1097,48 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     response["reply"]
                 )
 
+
+            elif message.get("type") == "video":
+                print("VIDEO RECEIVED")
+                video = message["video"]
+
+                from app.services.whatsapp_service import normalize_phone_number
+                normalized_sender_phone = normalize_phone_number(sender_phone)
+                clean_phone_10 = normalized_sender_phone[-10:]
+                supplier = db.query(Supplier).filter(
+                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                    (Supplier.whatsapp_number == normalized_sender_phone)
+                ).first()
+
+                # Download video to uploads/media directory for inbox rendering
+                media_local_path = "uploads/media"
+                file_path = download_media(video["id"], media_local_path, original_filename="video.mp4")
+                filename_only = os.path.basename(file_path)
+
+                try:
+                    inbox_msg = WhatsAppInboxMessage(
+                        supplier_id=supplier.id if supplier else None,
+                        supplier_phone=normalized_sender_phone,
+                        message_text="Received video",
+                        direction="inbound",
+                        is_read=False,
+                        media_type="video",
+                        media_path=f"uploads/media/{filename_only}"
+                    )
+                    db.add(inbox_msg)
+                    db.commit()
+                    print(f"[INBOX] Logged inbound video from {normalized_sender_phone} successfully.")
+                except Exception as e:
+                    db.rollback()
+                    print(f"[INBOX] Failed to log video: {e}")
+
+                # Videos cannot be quotations — redirect supplier to PM directly.
+                send_text_message(
+                    normalized_sender_phone,
+                    "Please send quotations only (PDF, image, or text).\n"
+                    "For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
+                    "+91 7219550051"
+                )
 
         return {
             "status": "success"

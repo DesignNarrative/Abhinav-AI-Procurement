@@ -262,15 +262,35 @@ def _process_whatsapp_document_pipeline_impl(
     # leaving it silently stuck at PENDING) and notifies the supplier.
     try:
         # Trigger Phase 2 & 3: Extraction (digital read or Gemini vision OCR)
+        print(f"[PIPELINE] Starting text extraction for UUID: {uuid}")
         extract_res = extract_text_from_pdf(db, uuid)
-        logger.info(f"Text extraction completed. Requires OCR: {extract_res.get('requires_ocr')}")
+        char_count = extract_res.get("character_count", 0)
+        print(f"[PIPELINE] Extraction done. chars={char_count}, requires_ocr={extract_res.get('requires_ocr')}")
 
         # Trigger Phase 4: Classification
-        doc_type = classify_document(db, uuid)
-        logger.info(f"Document classified as: {doc_type}")
+        # Use the doc_type already returned by extraction if it's meaningful.
+        # Only call classify_document again if extraction returned UNKNOWN (e.g. empty text).
+        doc_type = extract_res.get("document_type", "UNKNOWN")
+        if not doc_type or doc_type == "UNKNOWN":
+            print(f"[PIPELINE] Extraction returned UNKNOWN — running classify_document...")
+            doc_type = classify_document(db, uuid)
+        print(f"[PIPELINE] Document classified as: {doc_type}")
+
+        # Only send a processing receipt AFTER classification.
+        # For QUOTATION or INVOICE: notify supplier and run pipeline.
+        # For anything else (catalogue, certificate, photo, casual): stay silent.
+        if doc_type in ["QUOTATION", "INVOICE"]:
+            print(f"[PIPELINE] Sending processing receipt to {sender_phone}")
+            send_text_message(
+                sender_phone,
+                f"We have received your {doc_type.lower()} and our AI is processing it. You will receive a confirmation shortly."
+            )
+        else:
+            print(f"[PIPELINE] doc_type='{doc_type}' — bot stays silent, file visible in PM inbox.")
 
         return _finalize_document(db, supplier, uuid, doc_type, sender_phone)
     except Exception as pipeline_err:
+        print(f"[PIPELINE] ERROR for UUID {uuid}: {type(pipeline_err).__name__}: {pipeline_err}")
         return _mark_failed(db, sender_phone, supplier, uuid, pipeline_err)
 
 
@@ -292,19 +312,22 @@ def _finalize_document(
     document FAILED. Invoice/draft creation keep their own soft error handling.
     """
     if doc_type not in ["QUOTATION", "INVOICE"]:
-        logger.info(f"Document UUID {uuid} classified as {doc_type}, not QUOTATION or INVOICE. Skipping extraction parsing.")
+        logger.info(
+            f"Document UUID {uuid} classified as {doc_type}. "
+            f"Sending PM redirect message to {sender_phone}."
+        )
+        # This file is not a quotation — redirect the supplier to the PM directly.
         send_text_message(
             sender_phone,
-            f"Dear {supplier.contact_person_name},\n\n"
-            f"Thank you for sending your document. We classified this document as a {doc_type}. "
-            f"Please note that only Quotation and Invoice files are processed automatically. "
-            f"Our procurement team will review this manually if necessary."
+            f"Please send quotations only (PDF, image, or text).\n"
+            f"For other documents or queries, contact our Purchase Manager directly on WhatsApp: "
+            f"+91 7219550051"
         )
         return {
-            "status": "processed",
+            "status": "redirected",
             "document_uuid": uuid,
             "document_type": doc_type,
-            "action": "none_not_quotation"
+            "action": "pm_redirect_sent"
         }
 
     # Trigger Phase 6: Parse with LLM
@@ -479,14 +502,27 @@ def _mark_failed(
         db.rollback()
 
     try:
-        contact = supplier.contact_person_name if supplier else "Supplier"
-        send_text_message(
-            sender_phone,
-            f"Dear {contact},\n\n"
-            f"We received your document but our system could not read it automatically. "
-            f"Our procurement team has been notified and will review it manually. "
-            f"Thank you for your patience."
+        from fastapi import HTTPException as _HTTPException
+        # Do NOT send a confusing error message if the file type is simply not
+        # supported for AI processing (HTTP 400). Those files are already logged
+        # in the dashboard inbox so the PM can view and reply manually.
+        is_unsupported_type = (
+            isinstance(error, _HTTPException) and error.status_code == 400
         )
+        if not is_unsupported_type:
+            contact = supplier.contact_person_name if supplier else "Supplier"
+            send_text_message(
+                sender_phone,
+                f"Dear {contact},\n\n"
+                f"We received your document but our system could not read it automatically. "
+                f"Our procurement team has been notified and will review it manually. "
+                f"Thank you for your patience."
+            )
+        else:
+            logger.info(
+                f"Skipping error WhatsApp reply for unsupported file type (HTTP 400). "
+                f"File is visible in the PM dashboard inbox."
+            )
     except Exception:
         pass
 

@@ -112,15 +112,16 @@ def get_conversation_messages(
     phone_number: str,
     db: Session = Depends(get_db)
 ):
-    clean_phone = phone_number.replace("+", "").strip()
-    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+    from app.services.whatsapp_service import normalize_phone_number
+    normalized_phone = normalize_phone_number(phone_number)
+    clean_phone_10 = normalized_phone[-10:]
     
     supplier = db.query(Supplier).filter(
         (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-        (Supplier.whatsapp_number == phone_number)
+        (Supplier.whatsapp_number == normalized_phone)
     ).first()
 
-    company_name = f"New Supplier (+{phone_number})"
+    company_name = f"New Supplier (+{normalized_phone})"
     contact_person = "Unregistered"
     supplier_id = None
 
@@ -130,7 +131,7 @@ def get_conversation_messages(
         supplier_id = supplier.id
     else:
         active_conv = db.query(SupplierConversation).filter(
-            (SupplierConversation.phone_number == phone_number) |
+            (SupplierConversation.phone_number == normalized_phone) |
             (SupplierConversation.phone_number.like(f"%{clean_phone_10}"))
         ).filter(
             SupplierConversation.conversation_status == "IN_PROGRESS"
@@ -142,7 +143,7 @@ def get_conversation_messages(
                 contact_person = "Registering Onboard"
 
     messages = db.query(WhatsAppInboxMessage).filter(
-        WhatsAppInboxMessage.supplier_phone == phone_number
+        WhatsAppInboxMessage.supplier_phone == normalized_phone
     ).order_by(WhatsAppInboxMessage.created_at.asc()).all()
 
     return {
@@ -150,7 +151,7 @@ def get_conversation_messages(
             "id": supplier_id,
             "company_name": company_name,
             "contact_person": contact_person,
-            "whatsapp_number": phone_number
+            "whatsapp_number": normalized_phone
         },
         "messages": [
             {
@@ -158,9 +159,14 @@ def get_conversation_messages(
                 "message_text": m.message_text,
                 "direction": m.direction,
                 "is_read": m.is_read,
+                "media_type": m.media_type,
+                "media_path": m.media_path,
+                "is_deleted_for_me": m.is_deleted_for_me,
+                "is_deleted_for_everyone": m.is_deleted_for_everyone,
+                "is_edited": m.is_edited,
                 "created_at": m.created_at.isoformat() if m.created_at else ""
             }
-            for m in messages
+            for m in messages if not m.is_deleted_for_me
         ]
     }
 
@@ -171,8 +177,10 @@ def get_conversation_messages(
 # ---------------------------------------------------------------------------
 @router.post("/conversations/{phone_number}/mark-read")
 def mark_read(phone_number: str, db: Session = Depends(get_db)):
+    from app.services.whatsapp_service import normalize_phone_number
+    normalized_phone = normalize_phone_number(phone_number)
     db.query(WhatsAppInboxMessage).filter(
-        WhatsAppInboxMessage.supplier_phone == phone_number,
+        WhatsAppInboxMessage.supplier_phone == normalized_phone,
         WhatsAppInboxMessage.direction == "inbound",
         WhatsAppInboxMessage.is_read == False
     ).update({"is_read": True})
@@ -194,16 +202,106 @@ def send_reply(
     body: SendReplyRequest,
     db: Session = Depends(get_db)
 ):
-    # Normalise phone number for Meta API (must be digits only, with country code)
-    phone = phone_number.replace("+", "").strip()
-    if phone.startswith("91") and len(phone) > 11:
-        pass  # already has country code
-    elif len(phone) == 10:
-        phone = f"91{phone}"
+    from app.services.whatsapp_service import normalize_phone_number, send_text_message
+    normalized_phone = normalize_phone_number(phone_number)
 
     # Send via WhatsApp API
-    # Note: send_text_message itself now automatically logs the outbound message
-    # to the WhatsAppInboxMessage table, so we do not log it manually here.
-    result = send_text_message(phone, body.message)
+    result = send_text_message(normalized_phone, body.message)
 
     return {"status": "sent", "whatsapp_response": result}
+
+
+# ---------------------------------------------------------------------------
+# POST /inbox/conversations/{phone_number}/send-media
+# Upload and send media files (images, videos, PDFs, Excel, ZIP)
+# ---------------------------------------------------------------------------
+from fastapi import UploadFile, File
+import shutil
+import os
+
+@router.post("/conversations/{phone_number}/send-media")
+def send_media(
+    phone_number: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    from app.services.whatsapp_service import normalize_phone_number, send_media_message
+    normalized_phone = normalize_phone_number(phone_number)
+
+    # Save the file locally in uploads/media (served via /uploads FastAPI mount)
+    upload_dir = "uploads/media"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_path = os.path.join(upload_dir, file.filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Detect media type from extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext in (".jpg", ".jpeg", ".png", ".gif"):
+        media_type = "image"
+        mime_type = "image/jpeg" if ext in (".jpg", ".jpeg") else f"image/{ext[1:]}"
+    elif ext in (".mp4", ".mov", ".avi", ".3gp"):
+        media_type = "video"
+        mime_type = f"video/{ext[1:]}"
+    else:
+        media_type = "document"
+        if ext == ".pdf":
+            mime_type = "application/pdf"
+        elif ext == ".xlsx":
+            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif ext == ".zip":
+            mime_type = "application/zip"
+        else:
+            mime_type = "application/octet-stream"
+
+    # Send via WhatsApp API
+    result = send_media_message(
+        phone_number=normalized_phone,
+        file_path=file_path,
+        filename=file.filename,
+        media_type=media_type,
+        mime_type=mime_type
+    )
+
+    return {"status": "sent", "media_type": media_type, "whatsapp_response": result}
+
+
+# ---------------------------------------------------------------------------
+# Message edits and deletions endpoints
+# ---------------------------------------------------------------------------
+class EditMessageRequest(BaseModel):
+    message_text: str
+
+
+@router.post("/messages/{msg_id}/delete-for-me")
+def delete_for_me(msg_id: int, db: Session = Depends(get_db)):
+    msg = db.query(WhatsAppInboxMessage).filter(WhatsAppInboxMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    msg.is_deleted_for_me = True
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/messages/{msg_id}/delete-for-everyone")
+def delete_for_everyone(msg_id: int, db: Session = Depends(get_db)):
+    msg = db.query(WhatsAppInboxMessage).filter(WhatsAppInboxMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    msg.is_deleted_for_everyone = True
+    msg.message_text = "🚫 This message was deleted"
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/messages/{msg_id}/edit")
+def edit_message(msg_id: int, body: EditMessageRequest, db: Session = Depends(get_db)):
+    msg = db.query(WhatsAppInboxMessage).filter(WhatsAppInboxMessage.id == msg_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    msg.message_text = body.message_text
+    msg.is_edited = True
+    db.commit()
+    return {"status": "ok"}
+

@@ -306,23 +306,29 @@ def extract_text_from_pdf(
     if os.path.exists(text_path):
         with open(text_path, "r", encoding="utf-8") as f:
             total_text = f.read()
-        
-        doc_type = log.document_type
-        if not doc_type:
-            try:
-                doc_type = classify_document(db, document_uuid)
-            except Exception:
-                doc_type = "UNKNOWN"
-                
-        return {
-            "document_uuid": document_uuid,
-            "requires_ocr": False,
-            "page_count": 0,
-            "character_count": len(total_text),
-            "extracted_text_path": text_path,
-            "document_type": doc_type,
-            "preview": total_text[:250] + ("..." if len(total_text) > 250 else "")
-        }
+
+        # If the existing file is too short, it's from a failed/incomplete run —
+        # delete it and re-run extraction fresh below.
+        if len(total_text.strip()) >= 50:
+            doc_type = log.document_type
+            if not doc_type:
+                try:
+                    doc_type = classify_document(db, document_uuid)
+                except Exception:
+                    doc_type = "UNKNOWN"
+
+            return {
+                "document_uuid": document_uuid,
+                "requires_ocr": False,
+                "page_count": 0,
+                "character_count": len(total_text),
+                "extracted_text_path": text_path,
+                "document_type": doc_type,
+                "preview": total_text[:250] + ("..." if len(total_text) > 250 else "")
+            }
+        else:
+            print(f"[EXTRACTION] Existing text file for {document_uuid} is too short ({len(total_text.strip())} chars). Re-extracting...")
+            os.remove(text_path)
 
     # Open PDF with PyMuPDF to test digital layer
     try:
@@ -526,6 +532,62 @@ CLASSIFICATION_RULES = {
     "TEST_CERTIFICATE": ["test certificate", "mill test", "tc", "chemical composition", "mechanical properties"]
 }
 
+
+def classify_document_with_llm(text: str) -> str:
+    """
+    LLM-based semantic document classifier using Gemini.
+    Called as a fallback when keyword scoring is low or ambiguous.
+    Returns 'QUOTATION', 'INVOICE', or 'UNKNOWN'.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "UNKNOWN"
+
+    # Only send the first 4000 characters to keep the call fast and cheap
+    truncated_text = text[:4000].strip()
+    if not truncated_text:
+        return "UNKNOWN"
+
+    prompt = (
+        "Analyze the following text extracted from a document sent by a supplier.\n"
+        "Classify this document into exactly ONE of the following categories:\n"
+        "- QUOTATION (price quote, estimate, proforma invoice, rates sheet, cost breakdown, offer letter with prices)\n"
+        "- INVOICE (tax invoice, bill, payment request, cash memo)\n"
+        "- OTHER (GST certificate, MSME certificate, product catalogue, test report, casual chat, photo, or anything else)\n\n"
+        "Rules:\n"
+        "1. If you see item names, quantities, unit prices, or totals — it is QUOTATION or INVOICE.\n"
+        "2. If it contains 'tax invoice', 'invoice no', 'bill to' — it is INVOICE.\n"
+        "3. If it mentions 'quotation', 'quote', 'estimate', 'proforma' — it is QUOTATION.\n"
+        "4. If it is a certificate, catalogue, photo, or casual message — it is OTHER.\n\n"
+        "Respond with EXACTLY ONE WORD from: QUOTATION, INVOICE, OTHER — and nothing else.\n\n"
+        f"Document Text:\n\"\"\"\n{truncated_text}\n\"\"\""
+    )
+
+    model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+
+    try:
+        import httpx
+        r = httpx.post(url, json=payload, timeout=30.0)
+        if r.status_code == 200:
+            resp_json = r.json()
+            result = resp_json["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
+            # Extract only the classification word even if LLM adds extra text
+            if "QUOTATION" in result:
+                return "QUOTATION"
+            elif "INVOICE" in result:
+                return "INVOICE"
+        else:
+            print(f"[LLM CLASSIFIER] Gemini returned status {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        print(f"[LLM CLASSIFIER] Gemini classification request failed: {e}")
+
+    return "UNKNOWN"
+
 def classify_document(
     db: Session,
     document_uuid: str
@@ -586,6 +648,22 @@ def classify_document(
 
     best_type = max(scores, key=scores.get)
     classified_type = best_type if scores[best_type] > 0 else "UNKNOWN"
+
+    # ── LLM Fallback: if keyword score is low or UNKNOWN, ask Gemini to read the text ──
+    # This handles random filenames like IMG-8827.jpg or doc_new.pdf that suppliers send
+    if classified_type == "UNKNOWN" or scores.get(best_type, 0) < 2:
+        print(f"[CLASSIFIER] Keyword score low ({scores.get(best_type, 0)}), invoking Gemini LLM fallback...")
+        llm_type = classify_document_with_llm(text)
+        print(f"[CLASSIFIER] Gemini LLM classified document as: {llm_type}")
+        if llm_type in ["QUOTATION", "INVOICE"]:
+            classified_type = llm_type
+        # If LLM returns UNKNOWN/OTHER and keyword also matched something low-confidence,
+        # keep UNKNOWN so the bot stays silent (correct behavior)
+        elif classified_type != "UNKNOWN":
+            # Keep rules-based result when LLM says OTHER but rules matched something
+            pass
+        else:
+            classified_type = "UNKNOWN"
 
     try:
         log.document_type = classified_type

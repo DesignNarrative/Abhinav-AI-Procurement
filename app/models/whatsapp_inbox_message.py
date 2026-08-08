@@ -28,7 +28,7 @@ class WhatsAppInboxMessage(Base):
         index=True
     )
 
-    # The raw phone number (e.g. 919139548675)
+    # The raw phone number (normalized to digits only, e.g. 918862091694)
     supplier_phone = Column(
         String(20),
         nullable=False
@@ -53,6 +53,41 @@ class WhatsAppInboxMessage(Base):
         Boolean,
         default=False,
         nullable=False
+    )
+
+    # Rich features
+    media_type = Column(
+        String(10),
+        default="text",
+        nullable=False
+    )  # "text", "image", "video", "document"
+
+    media_path = Column(
+        String(255),
+        nullable=True
+    )
+
+    is_deleted_for_me = Column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    is_deleted_for_everyone = Column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    is_edited = Column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    whatsapp_message_id = Column(
+        String(100),
+        nullable=True
     )
 
     created_at = Column(
