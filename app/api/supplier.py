@@ -324,6 +324,75 @@ def register_supplier(
     }
 
 
+@router.post("/manual")
+def register_supplier_manual(
+    supplier: SupplierCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually register a supplier from the dashboard.
+    Automatically assigns a vendor code and marks them as APPROVED.
+    """
+    if supplier.gst_number:
+        existing_gst = db.query(Supplier).filter(
+            Supplier.gst_number == supplier.gst_number
+        ).first()
+        if existing_gst:
+            raise HTTPException(
+                status_code=400,
+                detail="GST Number already registered"
+            )
+
+    try:
+        # Generate vendor code
+        next_val = db.execute(text("SELECT nextval('supplier_code_seq')")).scalar()
+        supplier_code = f"VEND{next_val:06d}"
+    except Exception as e:
+        # Fallback if sequence is missing in sqlite/testing setups
+        supplier_code = None
+
+    from app.services.supplier_mapper import extract_categories
+    cats = extract_categories(supplier.principal_business, supplier.material_types)
+    supplier_category = ", ".join(cats) if cats else None
+
+    new_supplier = Supplier(
+        supplier_code=supplier_code,
+        company_name=supplier.company_name,
+        principal_business=supplier.principal_business,
+        gst_number=supplier.gst_number,
+        registered_address=supplier.registered_address,
+        contact_person_name=supplier.contact_person_name,
+        contact_person_email=supplier.contact_person_email,
+        whatsapp_number=supplier.whatsapp_number,
+        supplier_category=supplier_category,
+        material_types=supplier.material_types,
+        bank_name=supplier.bank_name,
+        beneficiary_name=supplier.beneficiary_name,
+        bank_account_number=supplier.bank_account_number,
+        bank_ifsc=supplier.bank_ifsc,
+        branch_name=supplier.branch_name,
+        is_msme=supplier.is_msme,
+        msme_number=supplier.msme_number,
+        msme_certificate_path=supplier.msme_certificate_path,
+        gst_certificate_path=supplier.gst_certificate_path,
+        references=supplier.references,
+        authorized_person_name=supplier.authorized_person_name,
+        designation=supplier.designation,
+        declaration_accepted=True,  # Verified by PM manually
+        registration_status="APPROVED"  # Auto-approved
+    )
+
+    db.add(new_supplier)
+    db.commit()
+    db.refresh(new_supplier)
+
+    return {
+        "message": "Supplier Created & Approved Successfully",
+        "supplier_id": new_supplier.id,
+        "supplier_code": new_supplier.supplier_code
+    }
+
+
 @router.put("/{supplier_id}/update")
 def update_supplier(
     supplier_id: int,

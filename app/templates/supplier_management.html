@@ -25,28 +25,16 @@ Supplier Management
         </div>
 
         <div class="d-flex gap-2">
-
-        <a
-            href="/dashboard/suppliers/export"
-            class="btn btn-success">
-
-            <i class="bi bi-file-earmark-excel"></i>
-
-            Export Excel
-
-        </a>
-
-        <a
-            href="/dashboard/"
-            class="btn btn-outline-primary">
-
-            <i class="bi bi-speedometer2"></i>
-
-            Dashboard
-
-        </a>
-
-    </div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registerSupplierModal">
+                <i class="bi bi-person-plus me-1"></i> Register Supplier
+            </button>
+            <a href="/dashboard/suppliers/export" class="btn btn-success">
+                <i class="bi bi-file-earmark-excel me-1"></i> Export Excel
+            </a>
+            <a href="/dashboard/" class="btn btn-outline-primary">
+                <i class="bi bi-speedometer2 me-1"></i> Dashboard
+            </a>
+        </div>
 
     </div>
 
@@ -344,4 +332,259 @@ Supplier Management
 
 </div>
 
+<!-- ======================================== -->
+<!-- REGISTER SUPPLIER MODAL -->
+<!-- ======================================== -->
+<div class="modal fade" id="registerSupplierModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary bg-opacity-10">
+        <h5 class="modal-title fw-bold text-primary"><i class="bi bi-person-plus me-2"></i>Register New Supplier</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="row g-3">
+          <!-- 1️⃣ Company Name -->
+          <div class="col-md-12">
+            <label class="form-label fw-bold text-dark mb-1">1️⃣ Company Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_company_name" required placeholder="Enter Company Name">
+          </div>
+          
+          <!-- 2️⃣ Principal Business / Work -->
+          <div class="col-md-12">
+            <label class="form-label fw-bold text-dark mb-1">2️⃣ What work does your company do?</label>
+            <input type="text" class="form-control" id="reg_principal_business" placeholder="e.g. Cement Supply, Steel Supply, Electrical Work">
+          </div>
+          
+          <!-- 3️⃣ Materials Supplied -->
+          <div class="col-md-12">
+            <label class="form-label fw-bold text-dark mb-1">3️⃣ What materials do you supply?</label>
+            <input type="text" class="form-control" id="reg_material_types" placeholder="e.g. Cement, Steel, Sand">
+          </div>
+          
+          <!-- 4️⃣ Registered Address -->
+          <div class="col-md-12">
+            <label class="form-label fw-bold text-dark mb-1">4️⃣ Company Address <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="reg_registered_address" rows="2" required placeholder="Enter Company Address"></textarea>
+          </div>
+          
+          <!-- 5️⃣ Contact Person Name -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">5️⃣ Contact Person Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_contact_person_name" required placeholder="Enter Contact Person Name">
+          </div>
+          
+          <!-- 6️⃣ Email Address -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">6️⃣ Email Address</label>
+            <input type="email" class="form-control" id="reg_contact_person_email" placeholder="Enter Email Address (or leave empty)">
+          </div>
+          
+          <!-- 7️⃣ WhatsApp Number -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">7️⃣ WhatsApp Number <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_whatsapp_number" required placeholder="10-digit mobile number" maxlength="10">
+          </div>
+          
+          <!-- 8️⃣ Bank Name -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">8️⃣ Bank Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_bank_name" required placeholder="Enter Bank Name">
+          </div>
+          
+          <!-- 9️⃣ Account Holder Name -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">9️⃣ Account Holder Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_beneficiary_name" required placeholder="Enter Account Holder Name">
+          </div>
+          
+          <!-- 🔟 Bank Account Number -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">🔟 Bank Account Number <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_bank_account_number" required placeholder="Enter Bank Account Number">
+          </div>
+          
+          <!-- 1️⃣1️⃣ IFSC Code -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">1️⃣1️⃣ IFSC Code <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="reg_bank_ifsc" required placeholder="Enter IFSC Code" maxlength="11">
+          </div>
+          
+          <!-- 1️⃣2️⃣ Bank Branch Name -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">1️⃣2️⃣ Bank Branch Name</label>
+            <input type="text" class="form-control" id="reg_branch_name" placeholder="Enter Bank Branch Name">
+          </div>
+          
+          <!-- 1️⃣3️⃣ MSME Registration -->
+          <div class="col-md-12">
+            <div class="border rounded-3 p-3 bg-light">
+              <label class="form-label fw-bold text-dark mb-2">1️⃣3️⃣ MSME Registration Details</label>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">MSME Registered?</label>
+                  <select class="form-select" id="reg_is_msme">
+                    <option value="false" selected>NO</option>
+                    <option value="true">YES</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">MSME Number</label>
+                  <input type="text" class="form-control" id="reg_msme_number" placeholder="Enter MSME Number">
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label small fw-semibold">MSME Certificate (PDF/Image)</label>
+                  <input type="file" class="form-control" id="reg_msme_file" accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 1️⃣4️⃣ GST Number -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">1️⃣4️⃣ GST Number</label>
+            <input type="text" class="form-control" id="reg_gst_number" placeholder="Enter GST Number">
+          </div>
+          
+          <!-- 1️⃣5️⃣ GST Registration Certificate -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">1️⃣5️⃣ GST Registration Certificate (PDF/Image)</label>
+            <input type="file" class="form-control" id="reg_gst_file" accept=".pdf,.jpg,.jpeg,.png">
+          </div>
+          
+          <!-- References (Optional, matching DB field) -->
+          <div class="col-md-12">
+            <label class="form-label fw-semibold small text-muted">References (Optional)</label>
+            <textarea class="form-control text-muted" id="reg_references" rows="1" placeholder="Enter references..."></textarea>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary fw-semibold" id="submitRegisterBtn">
+          <i class="bi bi-check-lg me-1"></i> Register &amp; Approve
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// File upload helper
+async function uploadFile(inputId, endpoint) {
+    const input = document.getElementById(inputId);
+    if (!input || !input.files || input.files.length === 0) return null;
+    
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+    
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        body: formData
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'File upload failed');
+    }
+    const data = await res.json();
+    return data.file_path;
+}
+
+document.getElementById('submitRegisterBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('submitRegisterBtn');
+    
+    // Required fields check
+    const required = {
+        reg_company_name: 'Company Name',
+        reg_registered_address: 'Registered Address',
+        reg_contact_person_name: 'Contact Person Name',
+        reg_whatsapp_number: 'WhatsApp Number',
+        reg_bank_name: 'Bank Name',
+        reg_beneficiary_name: 'Beneficiary Name',
+        reg_bank_account_number: 'Account Number',
+        reg_bank_ifsc: 'IFSC Code'
+    };
+    
+    for (const [id, label] of Object.entries(required)) {
+        const val = document.getElementById(id).value.trim();
+        if (!val) {
+            alert(`Please fill in required field: ${label}`);
+            document.getElementById(id).focus();
+            return;
+        }
+    }
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Uploading files...';
+        
+        // 1. Upload GST & MSME files if provided
+        const gstPath = await uploadFile('reg_gst_file', '/upload/gst-certificate');
+        const msmePath = await uploadFile('reg_msme_file', '/upload/msme-certificate');
+        
+        // 2. Build payload
+        const payload = {
+            company_name: document.getElementById('reg_company_name').value.trim(),
+            principal_business: document.getElementById('reg_principal_business').value.trim() || null,
+            gst_number: document.getElementById('reg_gst_number').value.trim() || null,
+            registered_address: document.getElementById('reg_registered_address').value.trim(),
+            material_types: document.getElementById('reg_material_types').value.trim() || null,
+            
+            contact_person_name: document.getElementById('reg_contact_person_name').value.trim(),
+            contact_person_email: document.getElementById('reg_contact_person_email').value.trim() || null,
+            whatsapp_number: document.getElementById('reg_whatsapp_number').value.trim(),
+            authorized_person_name: document.getElementById('reg_authorized_person_name').value.trim() || null,
+            designation: document.getElementById('reg_designation').value.trim() || null,
+            
+            bank_name: document.getElementById('reg_bank_name').value.trim(),
+            beneficiary_name: document.getElementById('reg_beneficiary_name').value.trim(),
+            bank_account_number: document.getElementById('reg_bank_account_number').value.trim(),
+            bank_ifsc: document.getElementById('reg_bank_ifsc').value.trim(),
+            branch_name: document.getElementById('reg_branch_name').value.trim() || null,
+            
+            is_msme: document.getElementById('reg_is_msme').value === 'true',
+            msme_number: document.getElementById('reg_msme_number').value.trim() || null,
+            references: document.getElementById('reg_references').value.trim() || null,
+            
+            gst_certificate_path: gstPath,
+            msme_certificate_path: msmePath,
+            declaration_accepted: true
+        };
+        
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving supplier...';
+        
+        const res = await fetch('/suppliers/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+            alert(`✅ Supplier registered and approved successfully!\nCode: ${data.supplier_code || 'Pending'}`);
+            window.location.reload();
+        } else {
+            let msg = 'Failed to register supplier.';
+            if (data.detail) {
+                if (Array.isArray(data.detail)) {
+                    msg = data.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+                } else {
+                    msg = data.detail;
+                }
+            }
+            alert(msg);
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Register &amp; Approve';
+    }
+});
+</script>
 {% endblock %}
