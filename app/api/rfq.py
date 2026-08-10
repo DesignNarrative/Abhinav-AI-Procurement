@@ -1,4 +1,6 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database.dependencies import get_db
@@ -163,6 +165,40 @@ def send_rfq(
         contact_number=contact_number
     )
     return result
+
+
+class RFQResendPayload(BaseModel):
+    vendor_ids: list[int]
+    deadline: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_number: Optional[str] = None
+
+
+@router.post("/{rfq_id}/resend")
+def resend_rfq(
+    rfq_id: int,
+    payload: RFQResendPayload,
+    db: Session = Depends(get_db)
+):
+    """
+    Re-send (or first-send) the RFQ to a specific subset of vendors.
+    Accepts a list of vendor_ids.  Each vendor is added to the RFQ if not
+    already attached, then the WhatsApp message is delivered.
+    Works regardless of RFQ status (Draft or Sent).
+    """
+    rfq = RFQService.get_rfq(db, rfq_id)
+    if not rfq:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+
+    result = RFQService.resend_rfq_to_specific_vendors(
+        db, rfq_id,
+        vendor_ids=payload.vendor_ids,
+        deadline=payload.deadline,
+        contact_person=payload.contact_person,
+        contact_number=payload.contact_number
+    )
+    return result
+
 
 
 # ──────────────────────────────────────────────────

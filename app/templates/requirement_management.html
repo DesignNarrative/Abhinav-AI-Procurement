@@ -139,21 +139,13 @@ Requirement Management
                     <thead>
 
                         <tr>
-
                             <th>No.</th>
-
                             <th>Project</th>
-
                             <th>Site</th>
-
-                            <th>Priority</th>
-
+                            <th>Materials</th>
                             <th>Required Date</th>
-
                             <th>Status</th>
-
                             <th>Action</th>
-
                         </tr>
 
                     </thead>
@@ -163,71 +155,35 @@ Requirement Management
                     {% for requirement in requirements %}
 
                         <tr>
-
+                            <td>{{ requirement.requirement_number }}</td>
+                            <td>{{ requirement.project_name }}</td>
+                            <td>{{ requirement.site_name }}</td>
                             <td>
-
-                                {{ requirement.requirement_number }}
-
+                                {% set mats = requirement.materials or [] %}
+                                {% if mats|length > 0 %}
+                                    <span class="badge bg-primary me-1">{{ mats|length }}</span>
+                                    <span class="small text-muted">
+                                        {{ mats[0].material_name }}
+                                        {% if mats|length > 1 %}, {{ mats[1].material_name }}{% endif %}
+                                        {% if mats|length > 2 %} <em>+{{ mats|length - 2 }} more</em>{% endif %}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted small">—</span>
+                                {% endif %}
                             </td>
-
+                            <td>{{ requirement.required_date or '—' }}</td>
                             <td>
-
-                                {{ requirement.project_name }}
-
+                                <span class="badge bg-warning text-dark">{{ requirement.status }}</span>
                             </td>
-
                             <td>
-
-                                {{ requirement.site_name }}
-
+                                <a href="/dashboard/requirements/{{ requirement.id }}" class="btn btn-sm btn-primary">View</a>
                             </td>
-
-                            <td>
-
-                                {{ requirement.priority }}
-
-                            </td>
-
-                            <td>
-
-                                {{ requirement.required_date }}
-
-                            </td>
-
-                            <td>
-
-                                <span class="badge bg-warning text-dark">
-
-                                    {{ requirement.status }}
-
-                                </span>
-
-                            </td>
-
-                            <td>
-
-                                <a
-                                    href="/dashboard/requirements/{{ requirement.id }}"
-                                    class="btn btn-sm btn-primary">
-
-                                    View
-
-                                </a>
-
-                            </td>
-
                         </tr>
 
                     {% else %}
 
                         <tr>
-
-                            <td colspan="7" class="text-center py-5">
-
-                                No Requirements Found
-
-                            </td>
-
+                            <td colspan="7" class="text-center py-5">No Requirements Found</td>
                         </tr>
 
                     {% endfor %}

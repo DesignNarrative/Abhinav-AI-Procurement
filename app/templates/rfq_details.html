@@ -307,23 +307,30 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                 </div>
             </div>
 
-            {% if rfq.status == "Draft" %}
-            <!-- Add Vendors (Draft only) -->
+            <!-- Add / Resend Vendors (always visible) -->
             <div class="card shadow-sm border-0 rounded-4 mt-4">
                 <div class="card-header bg-white">
-                    <h5 class="fw-bold mb-0"><i class="bi bi-person-plus text-primary me-2"></i>Add Vendors</h5>
+                    <h5 class="fw-bold mb-0"><i class="bi bi-person-plus text-primary me-2"></i>Add / Resend to Vendors</h5>
                 </div>
                 <div class="card-body">
+                    <p class="text-muted small mb-2">Select approved vendors and send or re-send this RFQ via WhatsApp.</p>
                     <input type="text" class="form-control mb-2" id="vendorSearch" placeholder="Search vendor by name...">
                     <div id="approvedVendorList" style="max-height: 260px; overflow-y: auto;">
                         <p class="text-muted small mb-0">Loading approved vendors...</p>
                     </div>
-                    <button class="btn btn-primary w-100 mt-2" id="addVendorsBtn">
-                        <i class="bi bi-plus-circle me-1"></i> Add Selected Vendors
+                    <div class="row g-2 mt-2">
+                        <div class="col-6">
+                            <input type="text" class="form-control form-control-sm" id="resendDeadline" placeholder="Deadline (optional)">
+                        </div>
+                        <div class="col-6">
+                            <input type="text" class="form-control form-control-sm" id="resendContact" placeholder="Contact person (optional)">
+                        </div>
+                    </div>
+                    <button class="btn btn-success w-100 mt-2" id="addVendorsBtn">
+                        <i class="bi bi-whatsapp me-1"></i> Send RFQ to Selected Vendors
                     </button>
                 </div>
             </div>
-            {% endif %}
 
         </div>
     </div>
@@ -412,6 +419,9 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script>
 const rfqId = {{ rfq.id }};
 
@@ -551,10 +561,13 @@ document.getElementById('addNegoBtn').addEventListener('click', () => {
     negoModal.show();
 });
 
-document.getElementById('negoVendor').addEventListener('change', function () {
-    const opt = this.selectedOptions[0];
-    document.getElementById('negoOriginal').value = opt && opt.dataset.grandTotal ? opt.dataset.grandTotal : '';
-});
+const negoVendorEl = document.getElementById('negoVendor');
+if (negoVendorEl) {
+    negoVendorEl.addEventListener('change', function () {
+        const opt = this.selectedOptions[0];
+        document.getElementById('negoOriginal').value = opt && opt.dataset.grandTotal ? opt.dataset.grandTotal : '';
+    });
+}
 
 document.getElementById('saveNegoBtn').addEventListener('click', async () => {
     const vendorSel = document.getElementById('negoVendor');
@@ -595,6 +608,80 @@ document.getElementById('saveNegoBtn').addEventListener('click', async () => {
     }
 });
 
+// ── Load approved vendors for Add/Resend panel (always visible) ──
+const vendorListEl = document.getElementById('approvedVendorList');
+
+async function loadApprovedVendors() {
+    if (!vendorListEl) { console.error('[RFQ] approvedVendorList element not found'); return; }
+    try {
+        const res = await fetch('/suppliers/approved');
+        if (!res.ok) {
+            console.error('[RFQ] /suppliers/approved returned', res.status);
+            vendorListEl.innerHTML = '<p class="text-danger small mb-0">Failed to load vendors (HTTP ' + res.status + ').</p>';
+            return;
+        }
+        const vendors = await res.json();
+        console.log('[RFQ] approved vendors loaded:', vendors.length);
+        if (!Array.isArray(vendors) || vendors.length === 0) {
+            vendorListEl.innerHTML = '<p class="text-muted small mb-0">No approved vendors found.</p>';
+            return;
+        }
+        vendorListEl.innerHTML = vendors.map(v => `
+            <label class="d-flex align-items-start gap-2 p-2 border rounded-3 mb-1 vendor-row" data-name="${(v.company_name || '').toLowerCase()}">
+                <input type="checkbox" class="form-check-input mt-1 vendor-cb" value="${v.id}">
+                <div>
+                    <div class="fw-semibold small">${v.company_name || 'Unknown'}</div>
+                    <div class="text-muted small">${v.supplier_category || 'General'}</div>
+                    <div class="text-muted small">📞 ${v.whatsapp_number || '-'}</div>
+                </div>
+            </label>
+        `).join('');
+    } catch (e) {
+        console.error('[RFQ] loadApprovedVendors error:', e);
+        if (vendorListEl) vendorListEl.innerHTML = '<p class="text-danger small mb-0">Error loading vendors: ' + e.message + '</p>';
+    }
+}
+loadApprovedVendors();
+
+document.getElementById('vendorSearch').addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    vendorListEl.querySelectorAll('.vendor-row').forEach(row => {
+        row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+    });
+});
+
+document.getElementById('addVendorsBtn').addEventListener('click', async () => {
+    const ids = Array.from(vendorListEl.querySelectorAll('.vendor-cb:checked')).map(cb => parseInt(cb.value));
+    if (ids.length === 0) { alert('Select at least one vendor.'); return; }
+    if (!confirm(`Send RFQ to ${ids.length} vendor(s) via WhatsApp?`)) return;
+
+    const deadline = document.getElementById('resendDeadline').value.trim() || null;
+    const contact_person = document.getElementById('resendContact').value.trim() || null;
+
+    const res = await fetch(`/rfqs/${rfqId}/resend`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ vendor_ids: ids, deadline, contact_person })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.sent_to) {
+        alert(`✅ RFQ sent to ${data.sent_to.length} vendor(s) successfully.`);
+        window.location.reload();
+    } else {
+        let msg = 'Failed to send RFQ.';
+        if (data.detail) {
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+            } else {
+                msg = data.detail;
+            }
+        } else if (data.error) {
+            msg = data.error;
+        }
+        alert(msg);
+    }
+});
+
 {% if rfq.status == "Draft" %}
 
 // ── Save payment terms (persisted) ──
@@ -614,55 +701,7 @@ async function savePaymentTerms(silent) {
 
 document.getElementById('saveDetailsBtn').addEventListener('click', () => savePaymentTerms(false));
 
-// ── Load approved vendors for selection ──
-const vendorListEl = document.getElementById('approvedVendorList');
-
-async function loadApprovedVendors() {
-    try {
-        const res = await fetch('/suppliers/approved');
-        const vendors = await res.json();
-        if (!Array.isArray(vendors) || vendors.length === 0) {
-            vendorListEl.innerHTML = '<p class="text-muted small mb-0">No approved vendors found.</p>';
-            return;
-        }
-        vendorListEl.innerHTML = vendors.map(v => `
-            <label class="d-flex align-items-start gap-2 p-2 border rounded-3 mb-1 vendor-row" data-name="${(v.company_name || '').toLowerCase()}">
-                <input type="checkbox" class="form-check-input mt-1 vendor-cb" value="${v.id}">
-                <div>
-                    <div class="fw-semibold small">${v.company_name || 'Unknown'}</div>
-                    <div class="text-muted small">${v.supplier_category || 'General'}</div>
-                    <div class="text-muted small">📞 ${v.whatsapp_number || '-'}</div>
-                </div>
-            </label>
-        `).join('');
-    } catch (e) {
-        vendorListEl.innerHTML = '<p class="text-danger small mb-0">Failed to load vendors.</p>';
-    }
-}
-loadApprovedVendors();
-
-document.getElementById('vendorSearch').addEventListener('input', function () {
-    const q = this.value.toLowerCase();
-    vendorListEl.querySelectorAll('.vendor-row').forEach(row => {
-        row.style.display = row.dataset.name.includes(q) ? '' : 'none';
-    });
-});
-
-document.getElementById('addVendorsBtn').addEventListener('click', async () => {
-    const ids = Array.from(vendorListEl.querySelectorAll('.vendor-cb:checked')).map(cb => parseInt(cb.value));
-    if (ids.length === 0) { alert('Select at least one vendor to add.'); return; }
-    for (const vid of ids) {
-        await fetch(`/rfqs/${rfqId}/vendors`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ vendor_id: vid })
-        });
-    }
-    alert(`${ids.length} vendor(s) added.`);
-    window.location.reload();
-});
-
-// ── Send RFQ (saves payment terms first, includes deadline/contact) ──
+// ── Send RFQ to ALL vendors (Draft only — saves payment terms first) ──
 document.getElementById('sendRfqBtn').addEventListener('click', async () => {
     if (!confirm('Send this RFQ to all attached vendors via WhatsApp?')) return;
     await savePaymentTerms(true);

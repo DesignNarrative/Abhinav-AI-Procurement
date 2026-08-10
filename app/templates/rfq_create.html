@@ -37,26 +37,17 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Payment Terms</label>
-                        <select class="form-select" id="payment_terms">
-                            <option value="">-- Select or type below --</option>
-                            <option value="Immediate Against Delivery">Immediate Against Delivery</option>
-                            <option value="2nd Day RTGS Against Delivery">2nd Day RTGS Against Delivery</option>
-                            <option value="100% Advance">100% Advance</option>
-                            <option value="30 Days Credit">30 Days Credit</option>
-                        </select>
+                        <input type="text" class="form-control" id="payment_terms" placeholder="e.g. Immediate Against Delivery, 30 Days Credit" list="payment_terms_list">
+                        <datalist id="payment_terms_list">
+                            <option value="Immediate Against Delivery"></option>
+                            <option value="2nd Day RTGS Against Delivery"></option>
+                            <option value="100% Advance"></option>
+                            <option value="30 Days Credit"></option>
+                        </datalist>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Created By <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="created_by" placeholder="e.g. Avdhut Sir" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Priority</label>
-                        <select class="form-select" id="priority">
-                            <option value="">-- Not set --</option>
-                            <option value="HIGH">HIGH</option>
-                            <option value="MEDIUM">MEDIUM</option>
-                            <option value="LOW">LOW</option>
-                        </select>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Required Date</label>
@@ -95,12 +86,27 @@
                 <h5 class="fw-bold mb-0"><i class="bi bi-people text-primary me-2"></i>Select Vendors to Notify</h5>
             </div>
             <div class="card-body">
-                <div class="mb-2">
-                    <input type="text" class="form-control" id="vendorSearch" placeholder="Search vendor by name...">
+                <!-- Vendor filters: Company + Category -->
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold small mb-1">Company</label>
+                        <input type="text" class="form-control form-control-sm" id="vendorSearch" placeholder="Search company...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold small mb-1">Category</label>
+                        <select class="form-select form-select-sm" id="vendorCategoryFilter">
+                            <option value="">All</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat|lower }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
                 <div class="row g-2 mt-1" id="vendorList">
                     {% for vendor in vendors %}
-                    <div class="col-md-4 vendor-card" data-name="{{ vendor.company_name|lower }}">
+                    <div class="col-md-4 vendor-card"
+                         data-name="{{ vendor.company_name|lower }}"
+                         data-category="{{ (vendor.supplier_category or '')|lower }}">
                         <label class="d-flex align-items-start gap-2 p-2 border rounded-3 cursor-pointer w-100 vendor-label">
                             <input type="checkbox" class="vendor-checkbox form-check-input mt-1 flex-shrink-0"
                                    value="{{ vendor.id }}" id="vendor_{{ vendor.id }}">
@@ -270,13 +276,18 @@ document.getElementById('addItemBtn').addEventListener('click', () => {
     });
 });
 
-// Vendor search
-document.getElementById('vendorSearch').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
+// Vendor search + category filter
+function applyVendorFilters() {
+    const q = document.getElementById('vendorSearch').value.toLowerCase();
+    const cat = document.getElementById('vendorCategoryFilter').value.toLowerCase();
     document.querySelectorAll('.vendor-card').forEach(card => {
-        card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+        const nameMatch = !q || card.dataset.name.includes(q);
+        const catMatch = !cat || card.dataset.category.includes(cat);
+        card.style.display = (nameMatch && catMatch) ? '' : 'none';
     });
-});
+}
+document.getElementById('vendorSearch').addEventListener('input', applyVendorFilters);
+document.getElementById('vendorCategoryFilter').addEventListener('change', applyVendorFilters);
 
 // Parse specs string "Key: Value, Key2: Value2" → object.
 // Any free-text segment WITHOUT a colon is preserved under a "specification"
@@ -332,7 +343,7 @@ function collectFormData() {
             delivery_location: document.getElementById('delivery_location').value.trim(),
             payment_terms: document.getElementById('payment_terms').value.trim() || null,
             created_by: document.getElementById('created_by').value.trim(),
-            priority: document.getElementById('priority').value.trim() || null,
+            priority: null,
             required_date: document.getElementById('required_date').value.trim() || null,
             purpose: document.getElementById('purpose').value.trim() || null
         },

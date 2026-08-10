@@ -265,6 +265,32 @@ class SupplierApprovalRequest(BaseModel):
 class SupplierRejectionRequest(BaseModel):
 
     remarks: str
-    
-    
+
+
+class SupplierUpdate(BaseModel):
+    """All PM-editable supplier fields. Every field is Optional — only send what changed."""
+
+    company_name: Optional[str] = None
+    principal_business: Optional[str] = None
+    gst_number: Optional[str] = None
+    registered_address: Optional[str] = None
+    supplier_category: Optional[str] = None
+    material_types: Optional[str] = None
+
+    contact_person_name: Optional[str] = None
+    contact_person_email: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+
+    bank_name: Optional[str] = None
+    beneficiary_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    branch_name: Optional[str] = None
+
+    is_msme: Optional[bool] = None
+    msme_number: Optional[str] = None
+
+    authorized_person_name: Optional[str] = None
+    designation: Optional[str] = None
+
     

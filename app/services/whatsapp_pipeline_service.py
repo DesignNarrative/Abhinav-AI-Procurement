@@ -394,6 +394,12 @@ def _finalize_document(
             draft_res = create_draft_quotation(db, uuid, rfq.id)
             logger.info(f"Auto-draft quotation created successfully. ID: {draft_res.get('quotation_id')}")
 
+            # Update inbox message to clearly label it as a quotation
+            _update_inbox_as_quotation(
+                db, supplier,
+                f"📋 Quotation received — linked to {rfq.rfq_number}. AI processing complete."
+            )
+
             # Send success WhatsApp message to supplier
             send_text_message(
                 sender_phone,
@@ -413,6 +419,12 @@ def _finalize_document(
         except Exception as draft_err:
             logger.error(f"Error creating draft quotation: {str(draft_err)}", exc_info=True)
             db.rollback()
+            # Update inbox message to label as quotation (with draft error note)
+            _update_inbox_as_quotation(
+                db, supplier,
+                f"📋 Quotation received — {rfq.rfq_number} (manual review needed, draft error)."
+            )
+
             # Send warning/manual-review WhatsApp message to supplier
             send_text_message(
                 sender_phone,
@@ -429,6 +441,12 @@ def _finalize_document(
             }
     elif resolve_reason == "no_active_rfq":
         logger.info(f"No active RFQ found for vendor. Processing stops at extraction phase.")
+        # Update inbox message to label as quotation (no RFQ matched)
+        _update_inbox_as_quotation(
+            db, supplier,
+            "📋 Quotation received — no active RFQ matched (manual review needed)."
+        )
+
         # Send confirmation WhatsApp message to supplier
         send_text_message(
             sender_phone,
@@ -451,6 +469,12 @@ def _finalize_document(
             f"RFQ resolution ambiguous for document {uuid}. "
             f"Skipping auto-draft; awaiting manual RFQ selection."
         )
+        # Update inbox message to label as quotation (ambiguous RFQ)
+        _update_inbox_as_quotation(
+            db, supplier,
+            "📋 Quotation received — multiple RFQs matched (manual review needed)."
+        )
+
         send_text_message(
             sender_phone,
             f"Dear {supplier.contact_person_name},\n\n"
@@ -465,6 +489,41 @@ def _finalize_document(
             "document_type": doc_type,
             "action": "manual_review_ambiguous_rfq"
         }
+
+
+def _update_inbox_as_quotation(
+    db: Session,
+    supplier: Supplier,
+    label: str
+) -> None:
+    """
+    Update the most recent inbound WhatsAppInboxMessage for this supplier
+    so the PM can see it is a quotation in the dashboard inbox.
+    Errors are caught silently — never crash the pipeline.
+    """
+    try:
+        from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
+        msg = (
+            db.query(WhatsAppInboxMessage)
+            .filter(
+                WhatsAppInboxMessage.supplier_id == supplier.id,
+                WhatsAppInboxMessage.direction == "inbound"
+            )
+            .order_by(WhatsAppInboxMessage.id.desc())
+            .first()
+        )
+        if msg:
+            msg.message_text = label
+            db.commit()
+            logger.info(f"[INBOX] Updated inbox message {msg.id} as quotation for supplier {supplier.id}")
+        else:
+            logger.warning(f"[INBOX] No inbox message found to update for supplier {supplier.id}")
+    except Exception as e:
+        logger.warning(f"[INBOX] Could not update inbox message as quotation: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _mark_failed(

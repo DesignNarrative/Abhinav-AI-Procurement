@@ -345,3 +345,100 @@ class RFQService:
             "message_preview": message,
             "sent_to": results
         }
+
+    @staticmethod
+    def resend_rfq_to_specific_vendors(
+        db: Session,
+        rfq_id: int,
+        vendor_ids: list,
+        deadline: str = None,
+        contact_person: str = None,
+        contact_number: str = None
+    ) -> dict:
+        """
+        Re-send (or first-send) the RFQ WhatsApp message to a specific subset
+        of vendor IDs.  For each vendor_id:
+        - If not yet attached to the RFQ, it is added first.
+        - The message is then sent via WhatsApp.
+        RFQ status is NOT changed (already Sent).
+        """
+        from app.services.rfq_whatsapp_service import generate_rfq_whatsapp_message
+        from app.services.whatsapp_service import send_text_message
+
+        rfq = db.query(RFQ).filter(RFQ.id == rfq_id).first()
+        if not rfq:
+            return {"error": "RFQ not found"}
+
+        if not vendor_ids:
+            return {"error": "No vendor IDs provided"}
+
+        items = db.query(RFQItem).filter(RFQItem.rfq_id == rfq_id).all()
+        item_dicts = [
+            {
+                "material_name": it.material_name,
+                "material_category": it.material_category,
+                "quantity": float(it.quantity),
+                "unit": it.unit,
+                "brand_required": it.brand_required,
+                "dynamic_fields": it.dynamic_fields or {},
+                "remarks": it.remarks
+            }
+            for it in items
+        ]
+
+        # Generate message once — same for all vendors
+        message = generate_rfq_whatsapp_message(
+            rfq_number=rfq.rfq_number,
+            project_name=rfq.project_name,
+            site_name=rfq.site_name,
+            delivery_location=rfq.delivery_location,
+            payment_terms=rfq.payment_terms,
+            items=item_dicts,
+            deadline=deadline,
+            contact_person=contact_person,
+            contact_number=contact_number,
+            priority=rfq.priority,
+            required_date=rfq.required_date,
+            purpose=rfq.purpose
+        )
+
+        results = []
+        for vendor_id in vendor_ids:
+            vendor = db.query(Supplier).filter(Supplier.id == vendor_id).first()
+            if not vendor:
+                results.append({"vendor_id": vendor_id, "error": "Vendor not found"})
+                continue
+
+            # Ensure vendor is attached to this RFQ (add if missing)
+            existing = (
+                db.query(RFQVendor)
+                .filter(RFQVendor.rfq_id == rfq_id, RFQVendor.vendor_id == vendor_id)
+                .first()
+            )
+            if not existing:
+                existing = RFQVendor(rfq_id=rfq_id, vendor_id=vendor_id)
+                db.add(existing)
+                db.commit()
+                db.refresh(existing)
+
+            phone = vendor.whatsapp_number
+            if not phone.startswith("+"):
+                phone = f"91{phone}" if len(phone) == 10 else phone
+
+            wa_result = send_text_message(phone, message)
+
+            existing.sent_at = datetime.now()
+            existing.whatsapp_status = "Sent"
+            db.commit()
+
+            results.append({
+                "vendor": vendor.company_name,
+                "phone": phone,
+                "result": wa_result
+            })
+
+        return {
+            "rfq_number": rfq.rfq_number,
+            "sent_to": results
+        }
+

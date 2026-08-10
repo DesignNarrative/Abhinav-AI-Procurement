@@ -48,14 +48,26 @@ def rfq_create_form(
         Supplier.registration_status == "APPROVED"
     ).order_by(Supplier.company_name).all()
 
+    # Build unique sorted category list from approved vendors (same logic as supplier management)
+    categories_set = set()
+    for v in vendors:
+        if v.supplier_category:
+            for cat in v.supplier_category.split(","):
+                cat = cat.strip()
+                if cat:
+                    categories_set.add(cat)
+    categories = sorted(list(categories_set))
+
     return templates.TemplateResponse(
         request=request,
         name="rfq_create.html",
         context={
             "request": request,
-            "vendors": vendors
+            "vendors": vendors,
+            "categories": categories
         }
     )
+
 
 
 @router.get("/{rfq_id}", response_class=HTMLResponse)

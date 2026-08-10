@@ -11,7 +11,8 @@ from app.schemas.supplier import (
     SupplierResponse,
     SupplierListResponse,
     SupplierApprovalRequest,
-    SupplierRejectionRequest
+    SupplierRejectionRequest,
+    SupplierUpdate
 )
 
 router = APIRouter(
@@ -36,6 +37,23 @@ def get_pending_suppliers(
         Supplier.registration_status == "PENDING"
     ).all()
 
+
+
+@router.get("/approved")
+def get_approved_suppliers(db: Session = Depends(get_db)):
+    """Return all APPROVED suppliers as JSON for vendor selection dropdowns."""
+    suppliers = db.query(Supplier).filter(
+        Supplier.registration_status == "APPROVED"
+    ).order_by(Supplier.company_name).all()
+    return [
+        {
+            "id": s.id,
+            "company_name": s.company_name,
+            "supplier_category": s.supplier_category,
+            "whatsapp_number": s.whatsapp_number
+        }
+        for s in suppliers
+    ]
 
 
 @router.get("/stats")
@@ -303,6 +321,34 @@ def register_supplier(
     return {
         "message": "Supplier Registered Successfully",
         "supplier_id": new_supplier.id
+    }
+
+
+@router.put("/{supplier_id}/update")
+def update_supplier(
+    supplier_id: int,
+    payload: SupplierUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update supplier details manually by PM. Only non-None fields are updated."""
+    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+
+    update_data = payload.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    for field, value in update_data.items():
+        setattr(supplier, field, value)
+
+    db.commit()
+    db.refresh(supplier)
+
+    return {
+        "message": "Supplier updated successfully",
+        "supplier_id": supplier.id,
+        "updated_fields": list(update_data.keys())
     }
 
 
