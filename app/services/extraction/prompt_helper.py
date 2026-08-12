@@ -283,7 +283,7 @@ def get_extraction_prompt(text: str, model_name: str, document_uuid: str) -> str
 
     prompt = f"""
 You are an expert AI extraction agent for a procurement system.
-Your task is to extract structured information from the raw quotation text below and return a JSON object that strictly conforms to the JSON Schema provided.
+Your task is to extract structured information from the raw quotation text or chat transcript below and return a JSON object that strictly conforms to the JSON Schema provided.
 
 JSON Schema:
 {schema_json}
@@ -291,7 +291,7 @@ JSON Schema:
 To guide your extraction, here is a complete one-shot EXAMPLE of a valid JSON output matching this schema:
 {example_json}
 
-Raw Quotation Text to extract from:
+Raw Quotation Text/Chat Transcript to extract from:
 {text}
 
 CRITICAL RULES:
@@ -306,5 +306,16 @@ CRITICAL RULES:
 2. Document type is "QUOTATION".
 3. Extract all line items and populate the line_items list. For each line item, fields like quantity, basic_rate, unit_of_measure, and total_item_amount MUST be the wrapped objects, NOT null. If they are null, wrap them with a null value key (e.g. "quantity": {{"value": null, "confidence": 0.0, "evidence": "", "page_number": 1, "bounding_box": null, "extraction_method": "{model_name}", "validation_status": "UNVALIDATED"}}).
 4. Return ONLY valid, raw JSON. Do not include markdown codeblocks (like ```json), explanations, or any other characters. Start your output with {{ and end it with }}.
+5. **List Price & Discount**: If a line item displays a list price (Gross Rate or LP) alongside a discount percentage and a net rate, extract the list price as `basic_rate` and the discount percentage as `discount_percent`. If only a net rate is shown, set `basic_rate` to the net rate and `discount_percent` to 0.
+6. **Cartage & Freight Line Items**: Do not extract shipping, transport, freight, cartage, loading, unloading, or packaging as line items. Instead, map their values to the header-level commercial metadata fields (`total_freight_amount`, `total_loading_unloading_amount`) or terms.
+7. **Alternative Options**: If items are marked or grouped as options/alternatives, note "Option Item" or "Alternative Item" in their `remarks` field so the Purchase Manager can easily differentiate them.
+8. **Specifications**: Retain exact dimensions, thickness, units, and pack sizes (e.g., "12.5mm 6x4", "25 KG", "5kg", "1.5 Kg Part-A") in the `offered_specification` field or as part of the `material_name`.
+
+CHAT TRANSCRIPT ANALYSIS RULES:
+- Analyze the entire conversation log from start to finish. Do not ignore earlier messages, as they establish essential context.
+- Use information from the start or middle of the chat (such as brand names, delivery locations like Wakad or Bhugaon, and payment terms like RTGS or Advance) to populate the fields of the extracted items.
+- Identify the final, active, agreed-upon rates, revisions, and quantities at the culmination of the chat history.
+- Map structural steel/materials ranges (e.g., "10-25mm - 46500" and "8/32mm - 47500") as separate line items (e.g., "10-25mm TMT Steel" and "8/32mm TMT Steel").
+- Standardize abbreviations: map "Mt", "MT", "pmt", "metric ton" to "MT"; "Bag", "Bags" to "Bags"; and "Nos", "ng", "peice" to "Nos".
 """
     return prompt

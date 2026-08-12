@@ -50,6 +50,41 @@ def document_intelligence_list(
         .order_by(DocumentIngestionLog.created_at.desc())
         .all()
     )
+
+    # Build supplier lookup map by ID and by phone number
+    suppliers = db.query(Supplier).all()
+    supplier_id_map = {s.id: s.company_name for s in suppliers}
+    
+    from app.services.whatsapp_service import normalize_phone_number
+    supplier_phone_map = {}
+    for s in suppliers:
+        if s.whatsapp_number:
+            try:
+                norm = normalize_phone_number(s.whatsapp_number)
+                clean_10 = norm[-10:]
+                supplier_phone_map[clean_10] = s.company_name
+            except Exception:
+                pass
+
+    # Attach supplier_name to the log objects dynamically
+    for log in logs:
+        supplier_name = "Unknown Supplier"
+        if log.supplier_id in supplier_id_map:
+            supplier_name = supplier_id_map[log.supplier_id]
+        elif log.sender_phone:
+            try:
+                norm_phone = normalize_phone_number(log.sender_phone)
+                clean_10 = norm_phone[-10:]
+                if clean_10 in supplier_phone_map:
+                    supplier_name = supplier_phone_map[clean_10]
+                else:
+                    supplier_name = log.sender_phone
+            except Exception:
+                supplier_name = log.sender_phone
+        else:
+            supplier_name = "Manual Upload"
+        log.supplier_name = supplier_name
+
     return templates.TemplateResponse(
         request=request,
         name="document_intelligence_list.html",

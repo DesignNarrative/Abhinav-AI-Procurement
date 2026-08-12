@@ -69,6 +69,7 @@
                             <th class="ps-4">File</th>
                             <th>Type</th>
                             <th>Source</th>
+                            <th>Supplier</th>
                             <th>Status</th>
                             <th>Ingested</th>
                             <th class="text-end pe-4">Actions</th>
@@ -105,6 +106,9 @@
                                 {% else %}
                                     <span class="badge bg-secondary"><i class="bi bi-upload me-1"></i>Manual</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <span class="fw-semibold text-dark">{{ log.supplier_name }}</span>
                             </td>
                             <td>
                                 {% if log.processing_status == "DONE" %}

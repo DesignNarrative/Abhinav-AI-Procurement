@@ -686,8 +686,38 @@ def _process_whatsapp_text_quotation_impl(
         # The message text IS the extracted text: write it where the pipeline
         # expects it so classify/parse read it directly (no OCR/PDF stage).
         text_path = os.path.join(INGEST_FOLDER, f"{doc_uuid}_extracted.txt").replace("\\", "/")
+        
+        # Build conversation context to help the LLM extract the correct metadata (brand, location, payment terms, etc.)
+        try:
+            from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
+            from app.services.whatsapp_service import normalize_phone_number
+            
+            norm_phone = normalize_phone_number(sender_phone)
+            history = (
+                db.query(WhatsAppInboxMessage)
+                .filter(WhatsAppInboxMessage.supplier_phone == norm_phone)
+                .order_by(WhatsAppInboxMessage.created_at.desc())
+                .limit(50)
+                .all()
+            )
+            history = list(reversed(history))
+            
+            has_current = any(msg.message_text == message_text for msg in history)
+            context_lines = []
+            for msg in history:
+                sender = "Supplier" if msg.direction == "inbound" else "Purchase Manager"
+                context_lines.append(f"[{sender}]: {msg.message_text or ''}")
+            
+            if not has_current:
+                context_lines.append(f"[Supplier]: {message_text}")
+                
+            combined_context = "\n".join(context_lines)
+        except Exception as ctx_err:
+            logger.warning(f"Failed to fetch conversation history for context: {ctx_err}")
+            combined_context = message_text
+
         with open(text_path, "w", encoding="utf-8") as f:
-            f.write(message_text)
+            f.write(combined_context)
 
         log.processing_status = "PROCESSING"
         db.commit()
