@@ -1,4 +1,4 @@
-{% extends "layouts/base.html" %}
+﻿{% extends "layouts/base.html" %}
 
 {% block title %}{{ comparison.rfq_number }} — Quotation Comparison{% endblock %}
 
@@ -129,6 +129,52 @@
                         {% for v in comparison.vendors %}
                         <td class="text-center fw-bold {% if loop.first %}text-success{% endif %}">
                             ₹{{ "{:,.2f}".format(v.grand_total) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <tr class="table-light">
+                        <td class="fw-bold">Cost Savings (vs. Highest)</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center fw-bold text-success">
+                            {% if v.cost_savings > 0 %}
+                            <span class="badge bg-success-subtle text-success fs-6">+₹{{ "{:,.2f}".format(v.cost_savings) }}</span>
+                            {% elif v.cost_savings == 0 and comparison.vendors | length > 1 %}
+                            <span class="text-muted small">— (Benchmark)</span>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Advantages (Pros)</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-start pe-2 font-monospace" style="font-size: 0.8rem;">
+                            {% if v.pros %}
+                                {% for pro in v.pros %}
+                                <div class="text-success mb-1">
+                                    <i class="bi bi-check-lg me-1"></i>{{ pro }}
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-muted text-center">—</div>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Disadvantages (Cons)</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-start pe-2 font-monospace" style="font-size: 0.8rem;">
+                            {% if v.cons %}
+                                {% for con in v.cons %}
+                                <div class="text-danger mb-1">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>{{ con }}
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-muted text-center">—</div>
+                            {% endif %}
                         </td>
                         {% endfor %}
                     </tr>
@@ -338,3 +384,4 @@ if (saveWeightsBtn) {
 }
 </script>
 {% endblock %}
+

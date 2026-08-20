@@ -17,7 +17,7 @@ Requirement Management
             </h2>
 
             <p class="text-muted mb-0">
-                Create and manage procurement requirements.
+                Track all procurement requirements — from material request to comparison.
             </p>
 
         </div>
@@ -68,10 +68,11 @@ Requirement Management
                             name="status">
 
                             <option value="">All</option>
-                            <option value="DRAFT">Draft</option>
-                            <option value="SUBMITTED">Submitted</option>
-                            <option value="RFQ_SENT">RFQ Sent</option>
-                            <option value="COMPLETED">Completed</option>
+                            <option value="DRAFT" {% if status == 'DRAFT' %}selected{% endif %}>Draft</option>
+                            <option value="SUBMITTED" {% if status == 'SUBMITTED' %}selected{% endif %}>Submitted</option>
+                            <option value="RFQ_SENT" {% if status == 'RFQ_SENT' %}selected{% endif %}>RFQ Sent</option>
+                            <option value="COMPLETED" {% if status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+                            <option value="CANCELLED" {% if status == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
 
                         </select>
 
@@ -112,56 +113,45 @@ Requirement Management
 
     </div>
 
-    <div class="card shadow-sm border-0 rounded-4">
-
-        <div class="card-header bg-white d-flex justify-content-between">
-
+    <!-- ── ACTIVE REQUIREMENTS ───────────────────────────────────────── -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
             <h5 class="fw-bold mb-0">
-
-                Requirement List
-
+                <i class="bi bi-lightning-fill text-warning me-1"></i> Active Requirements
             </h5>
-
-            <span class="badge bg-primary">
-
-                {{ requirements|length }} Requirements
-
-            </span>
-
+            <span class="badge bg-primary">{{ active_requirements|length }}</span>
         </div>
-
-        <div class="card-body">
-
+        <div class="card-body p-0">
+            {% if active_requirements %}
             <div class="table-responsive">
-
-                <table class="table table-hover">
-
-                    <thead>
-
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
                         <tr>
-                            <th>No.</th>
-                            <th>Project</th>
-                            <th>Site</th>
+                            <th>Req. No.</th>
+                            <th>Project / Site</th>
                             <th>Materials</th>
-                            <th>Required Date</th>
+                            <th>Required By</th>
                             <th>Status</th>
-                            <th>Action</th>
+                            <th>Procurement Progress</th>
+                            <th class="text-center">Actions</th>
                         </tr>
-
                     </thead>
-
                     <tbody>
-
-                    {% for requirement in requirements %}
-
+                        {% for e in active_requirements %}
+                        {% set req = e.req %}
                         <tr>
-                            <td>{{ requirement.requirement_number }}</td>
-                            <td>{{ requirement.project_name }}</td>
-                            <td>{{ requirement.site_name }}</td>
                             <td>
-                                {% set mats = requirement.materials or [] %}
+                                <strong class="text-primary">{{ req.requirement_number }}</strong>
+                                <br><small class="text-muted">{{ req.requested_by }}</small>
+                            </td>
+                            <td>
+                                <strong>{{ req.project_name }}</strong>
+                                <br><small class="text-muted">{{ req.site_name }}</small>
+                            </td>
+                            <td>
+                                {% set mats = req.materials or [] %}
                                 {% if mats|length > 0 %}
-                                    <span class="badge bg-primary me-1">{{ mats|length }}</span>
+                                    <span class="badge bg-secondary me-1">{{ mats|length }}</span>
                                     <span class="small text-muted">
                                         {{ mats[0].material_name }}
                                         {% if mats|length > 1 %}, {{ mats[1].material_name }}{% endif %}
@@ -171,32 +161,141 @@ Requirement Management
                                     <span class="text-muted small">—</span>
                                 {% endif %}
                             </td>
-                            <td>{{ requirement.required_date or '—' }}</td>
+                            <td class="text-muted small">{{ req.required_date or '—' }}</td>
                             <td>
-                                <span class="badge bg-warning text-dark">{{ requirement.status }}</span>
+                                {% if req.status == 'DRAFT' %}
+                                    <span class="badge bg-secondary">Draft</span>
+                                {% elif req.status == 'SUBMITTED' %}
+                                    <span class="badge bg-warning text-dark">Submitted</span>
+                                {% elif req.status == 'RFQ_SENT' %}
+                                    <span class="badge bg-primary">RFQ Sent</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark">{{ req.status }}</span>
+                                {% endif %}
                             </td>
                             <td>
-                                <a href="/dashboard/requirements/{{ requirement.id }}" class="btn btn-sm btn-primary">View</a>
+                                {% if e.rfq %}
+                                    <div class="small">
+                                        <span class="text-muted">RFQ:</span>
+                                        <a href="/dashboard/rfq/{{ e.rfq.id }}" class="fw-semibold text-decoration-none">
+                                            {{ e.rfq.rfq_number }}
+                                        </a>
+                                    </div>
+                                    <div class="small mt-1">
+                                        <i class="bi bi-send text-primary me-1"></i>
+                                        Sent to <strong>{{ e.vendor_count }}</strong> supplier{% if e.vendor_count != 1 %}s{% endif %}
+                                        &nbsp;·&nbsp;
+                                        <i class="bi bi-chat-quote text-success me-1"></i>
+                                        <strong>{{ e.quote_count }}</strong> quote{% if e.quote_count != 1 %}s{% endif %} received
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted small">
+                                        <i class="bi bi-hourglass me-1"></i>RFQ not yet generated
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    <a href="/dashboard/requirements/{{ req.id }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                    {% if e.rfq %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-file-text"></i> RFQ
+                                    </a>
+                                    {% endif %}
+                                    {% if e.can_compare %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}/comparison" class="btn btn-sm btn-success">
+                                        <i class="bi bi-bar-chart"></i> Compare
+                                    </a>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
-
-                    {% else %}
-
-                        <tr>
-                            <td colspan="7" class="text-center py-5">No Requirements Found</td>
-                        </tr>
-
-                    {% endfor %}
-
+                        {% endfor %}
                     </tbody>
-
                 </table>
-
             </div>
-
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-inbox fs-1 d-block mb-3" style="opacity:0.3;"></i>
+                <p class="mb-2">No active requirements found.</p>
+                <a href="/dashboard/rfq/create" class="btn btn-primary btn-sm">+ Create New Requirement</a>
+            </div>
+            {% endif %}
         </div>
-
     </div>
+
+    <!-- ── COLD / COMPLETED REQUIREMENTS ────────────────────────────── -->
+    {% if cold_requirements %}
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center"
+             style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#coldCollapse">
+            <h5 class="fw-semibold mb-0 text-muted">
+                <i class="bi bi-archive me-1"></i> Completed / Closed Requirements
+            </h5>
+            <span class="badge bg-secondary">{{ cold_requirements|length }} &nbsp;<i class="bi bi-chevron-down"></i></span>
+        </div>
+        <div id="coldCollapse" class="collapse">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Req. No.</th>
+                                <th>Project / Site</th>
+                                <th>Materials</th>
+                                <th>Required By</th>
+                                <th>Status</th>
+                                <th>RFQ</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in cold_requirements %}
+                            {% set req = e.req %}
+                            <tr>
+                                <td>
+                                    <strong>{{ req.requirement_number }}</strong>
+                                    <br><small class="text-muted">{{ req.requested_by }}</small>
+                                </td>
+                                <td>
+                                    {{ req.project_name }}<br>
+                                    <small class="text-muted">{{ req.site_name }}</small>
+                                </td>
+                                <td>
+                                    {% set mats = req.materials or [] %}
+                                    <span class="badge bg-secondary">{{ mats|length }}</span>
+                                </td>
+                                <td class="text-muted small">{{ req.required_date or '—' }}</td>
+                                <td>
+                                    {% if req.status == 'COMPLETED' %}
+                                        <span class="badge bg-success">Completed</span>
+                                    {% elif req.status == 'CANCELLED' %}
+                                        <span class="badge bg-danger">Cancelled</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark">{{ req.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">
+                                    {% if e.rfq %}
+                                        <a href="/dashboard/rfq/{{ e.rfq.id }}">{{ e.rfq.rfq_number }}</a>
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <a href="/dashboard/requirements/{{ req.id }}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
 </div>
 

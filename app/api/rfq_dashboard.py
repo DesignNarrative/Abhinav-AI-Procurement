@@ -48,14 +48,13 @@ def rfq_create_form(
         Supplier.registration_status == "APPROVED"
     ).order_by(Supplier.company_name).all()
 
-    # Build unique sorted category list from approved vendors (same logic as supplier management)
+    # Build unique category list by extracting from BOTH principal_business AND material_types
+    # for every vendor — identical to registration logic so nothing is ever missed.
+    from app.services.supplier_mapper import extract_categories
     categories_set = set()
     for v in vendors:
-        if v.supplier_category:
-            for cat in v.supplier_category.split(","):
-                cat = cat.strip()
-                if cat:
-                    categories_set.add(cat)
+        cats = extract_categories(v.principal_business, v.material_types)
+        categories_set.update(cats)
     categories = sorted(list(categories_set))
 
     return templates.TemplateResponse(

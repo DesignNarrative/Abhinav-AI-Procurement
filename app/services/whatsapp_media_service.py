@@ -93,14 +93,33 @@ def download_media(
         "video/quicktime": ".mov",
         "audio/ogg": ".ogg",
         "audio/mpeg": ".mp3",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-        "application/vnd.ms-excel": ".xls",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/aac": ".aac",
+        "audio/amr": ".amr",
+        "text/csv": ".csv",
+        "text/plain": ".txt",
+        "application/csv": ".csv",
+        "application/x-rar-compressed": ".rar",
+        "application/vnd.rar": ".rar",
         "application/zip": ".zip",
         "application/msword": ".doc",
+        "application/vnd.ms-excel": ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "application/rtf": ".rtf",
     }
 
     file_extension = extension_map.get(content_type, "")
+
+    # Dynamic fallback: Guess extension from subtype (e.g. application/rtf -> .rtf)
+    if not file_extension and "/" in content_type:
+        subtype = content_type.split("/")[1].split(";")[0].strip()
+        if subtype and len(subtype) <= 5 and subtype.isalnum():
+            file_extension = f".{subtype}"
+            print(f"[DOWNLOAD_MEDIA] Guessed extension '{file_extension}' from Content-Type '{content_type}'")
 
     # Fallback: if content-type is ambiguous, derive extension from the original
     # filename supplied by WhatsApp document metadata (e.g. "Quotation.pdf" -> ".pdf").

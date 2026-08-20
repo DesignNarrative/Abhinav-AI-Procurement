@@ -459,6 +459,7 @@
           <div class="contact-avatar">${initial}</div>
           <div class="contact-info">
             <div class="contact-name">${escHtml(c.company_name)}</div>
+            <div class="contact-phone" style="font-size:0.75rem; color:#128c7e; font-weight:500; margin-top:2px;">+${c.supplier_phone}</div>
             <div class="contact-preview">${preview}</div>
           </div>
           <div class="contact-meta">
@@ -572,14 +573,29 @@
 
       const editedBadge = m.is_edited ? `<span class="msg-edited-tag">edited</span>` : "";
 
+      let statusIcon = "";
+      if (isOutbound) {
+        const status = m.delivery_status || "sent";
+        if (status === "read") {
+          statusIcon = ' <i class="bi bi-check2-all text-primary" title="Read"></i>';
+        } else if (status === "delivered") {
+          statusIcon = ' <i class="bi bi-check2-all text-muted" title="Delivered"></i>';
+        } else if (status === "sent") {
+          statusIcon = ' <i class="bi bi-check2 text-muted" title="Sent"></i>';
+        } else if (status === "failed") {
+          statusIcon = ' <i class="bi bi-exclamation-circle-fill text-danger" title="Failed to deliver"></i>';
+        } else {
+          statusIcon = ' <i class="bi bi-check2 text-muted" title="Sent"></i>';
+        }
+      }
+
       return `
         <div class="msg-bubble-container">
           <div class="msg-bubble ${cls}">
             ${dropdownHtml}
             ${contentHtml}
             <span class="msg-time">
-              ${editedBadge}${timeStr}
-              ${isOutbound ? ' <i class="bi bi-check2-all text-primary"></i>' : ''}
+              ${editedBadge}${timeStr}${statusIcon}
             </span>
           </div>
         </div>`;

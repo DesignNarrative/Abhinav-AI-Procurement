@@ -249,6 +249,7 @@ class ComparisonService:
         # ── Weighted scoring ──────────────────────────
         totals = [v["grand_total"] for v in vendor_columns if v["grand_total"] > 0]
         lowest_total = min(totals) if totals else 0.0
+        highest_total = max(totals) if totals else 0.0
 
         delivery_days = [
             d for d in (
@@ -258,6 +259,39 @@ class ComparisonService:
             if d is not None
         ]
         fastest_days = min(delivery_days) if delivery_days else None
+
+        # Compute cost savings and pros/cons for each vendor
+        for v in vendor_columns:
+            v["cost_savings"] = float(highest_total - v["grand_total"])
+            pros = []
+            cons = []
+
+            # Price checks
+            if lowest_total > 0:
+                if v["grand_total"] == lowest_total:
+                    pros.append("Lowest price (L1)")
+                elif v["grand_total"] <= lowest_total * 1.05:
+                    pros.append("Competitive price (within 5% of L1)")
+                elif highest_total > lowest_total and v["grand_total"] == highest_total:
+                    cons.append("Highest quote among vendors")
+
+            # Delivery checks
+            days = ComparisonService._extract_days(v["delivery_timeline"])
+            if days is not None and fastest_days is not None:
+                if days == fastest_days:
+                    pros.append("Fastest delivery timeline")
+                elif days > fastest_days + 7:
+                    cons.append("Slower delivery timeline")
+
+            # Payment terms checks
+            pt = (v["payment_terms"] or "").lower()
+            if "credit" in pt or "days" in pt:
+                pros.append("Offers credit payment terms")
+            elif "advance" in pt or "immediate" in pt:
+                cons.append("Requires upfront or immediate payment")
+
+            v["pros"] = pros
+            v["cons"] = cons
 
         scores = []
         for v in vendor_columns:

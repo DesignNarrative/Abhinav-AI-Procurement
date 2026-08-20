@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.rfq import RFQ
@@ -324,10 +324,49 @@ class RFQService:
             if not phone.startswith("+"):
                 phone = f"91{phone}" if len(phone) == 10 else phone
 
-            wa_result = send_text_message(phone, message)
+            # Check 24-hour customer window
+            from datetime import timedelta, timezone
+            from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
+            from app.services.whatsapp_service import send_template_message
+            from app.config.settings import WHATSAPP_RFQ_TEMPLATE
+
+            clean_phone_10 = phone[-10:]
+            limit_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            
+            last_inbound = db.query(WhatsAppInboxMessage).filter(
+                (WhatsAppInboxMessage.supplier_phone.like(f"%{clean_phone_10}")) |
+                (WhatsAppInboxMessage.supplier_phone == phone),
+                WhatsAppInboxMessage.direction == "inbound",
+                WhatsAppInboxMessage.created_at >= limit_24h
+            ).first()
+
+            if last_inbound:
+                wa_result = send_text_message(phone, message)
+                whatsapp_status = "Sent"
+            else:
+                template_name = WHATSAPP_RFQ_TEMPLATE or "rfq_invitation"
+                if template_name == "hello_world":
+                    components = []
+                else:
+                    components = [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": vendor.company_name or "Supplier"},
+                                {"type": "text", "text": rfq.rfq_number},
+                                {"type": "text", "text": rfq.project_name}
+                            ]
+                        }
+                    ]
+                wa_result = send_template_message(
+                    phone_number=phone,
+                    template_name=template_name,
+                    components=components
+                )
+                whatsapp_status = "Sent (Template)"
 
             rv.sent_at = datetime.now()
-            rv.whatsapp_status = "Sent"
+            rv.whatsapp_status = whatsapp_status
             db.commit()
 
             results.append({
@@ -425,10 +464,49 @@ class RFQService:
             if not phone.startswith("+"):
                 phone = f"91{phone}" if len(phone) == 10 else phone
 
-            wa_result = send_text_message(phone, message)
+            # Check 24-hour customer window
+            from datetime import timedelta, timezone
+            from app.models.whatsapp_inbox_message import WhatsAppInboxMessage
+            from app.services.whatsapp_service import send_template_message
+            from app.config.settings import WHATSAPP_RFQ_TEMPLATE
+
+            clean_phone_10 = phone[-10:]
+            limit_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            
+            last_inbound = db.query(WhatsAppInboxMessage).filter(
+                (WhatsAppInboxMessage.supplier_phone.like(f"%{clean_phone_10}")) |
+                (WhatsAppInboxMessage.supplier_phone == phone),
+                WhatsAppInboxMessage.direction == "inbound",
+                WhatsAppInboxMessage.created_at >= limit_24h
+            ).first()
+
+            if last_inbound:
+                wa_result = send_text_message(phone, message)
+                whatsapp_status = "Sent"
+            else:
+                template_name = WHATSAPP_RFQ_TEMPLATE or "rfq_invitation"
+                if template_name == "hello_world":
+                    components = []
+                else:
+                    components = [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {"type": "text", "text": vendor.company_name or "Supplier"},
+                                {"type": "text", "text": rfq.rfq_number},
+                                {"type": "text", "text": rfq.project_name}
+                            ]
+                        }
+                    ]
+                wa_result = send_template_message(
+                    phone_number=phone,
+                    template_name=template_name,
+                    components=components
+                )
+                whatsapp_status = "Sent (Template)"
 
             existing.sent_at = datetime.now()
-            existing.whatsapp_status = "Sent"
+            existing.whatsapp_status = whatsapp_status
             db.commit()
 
             results.append({
@@ -441,4 +519,5 @@ class RFQService:
             "rfq_number": rfq.rfq_number,
             "sent_to": results
         }
+
 

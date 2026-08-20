@@ -59,7 +59,21 @@ def get_conversations(db: Session = Depends(get_db)):
 
         if supplier:
             company_name = supplier.company_name
-            contact_person = supplier.contact_person_name or "Approved"
+            if supplier.registration_status == "PENDING_REGISTRATION":
+                active_conv = db.query(SupplierConversation).filter(
+                    (SupplierConversation.phone_number == phone) |
+                    (SupplierConversation.phone_number.like(f"%{clean_phone_10}"))
+                ).filter(
+                    SupplierConversation.conversation_status == "IN_PROGRESS"
+                ).first()
+                if active_conv:
+                    company_name = f"{supplier.company_name} (Registering...)"
+                    contact_person = "Registering Onboard"
+                else:
+                    company_name = f"{supplier.company_name} (Unregistered)"
+                    contact_person = "Discovered / Unregistered"
+            else:
+                contact_person = supplier.contact_person_name or "Approved"
             supplier_id = supplier.id
         else:
             # Check if they are currently registering (in active conversation)
@@ -127,7 +141,21 @@ def get_conversation_messages(
 
     if supplier:
         company_name = supplier.company_name
-        contact_person = supplier.contact_person_name or "Approved"
+        if supplier.registration_status == "PENDING_REGISTRATION":
+            active_conv = db.query(SupplierConversation).filter(
+                (SupplierConversation.phone_number == normalized_phone) |
+                (SupplierConversation.phone_number.like(f"%{clean_phone_10}"))
+            ).filter(
+                SupplierConversation.conversation_status == "IN_PROGRESS"
+            ).first()
+            if active_conv:
+                company_name = f"{supplier.company_name} (Registering...)"
+                contact_person = "Registering Onboard"
+            else:
+                company_name = f"{supplier.company_name} (Unregistered)"
+                contact_person = "Discovered / Unregistered"
+        else:
+            contact_person = supplier.contact_person_name or "Approved"
         supplier_id = supplier.id
     else:
         active_conv = db.query(SupplierConversation).filter(
@@ -143,7 +171,9 @@ def get_conversation_messages(
                 contact_person = "Registering Onboard"
 
     messages = db.query(WhatsAppInboxMessage).filter(
-        WhatsAppInboxMessage.supplier_phone == normalized_phone
+        (WhatsAppInboxMessage.supplier_phone == normalized_phone) |
+        (WhatsAppInboxMessage.supplier_phone == phone_number) |
+        (WhatsAppInboxMessage.supplier_phone.like(f"%{clean_phone_10}"))
     ).order_by(WhatsAppInboxMessage.created_at.asc()).all()
 
     return {
@@ -164,6 +194,7 @@ def get_conversation_messages(
                 "is_deleted_for_me": m.is_deleted_for_me,
                 "is_deleted_for_everyone": m.is_deleted_for_everyone,
                 "is_edited": m.is_edited,
+                "delivery_status": m.delivery_status or "sent",
                 "created_at": m.created_at.isoformat() if m.created_at else ""
             }
             for m in messages if not m.is_deleted_for_me
@@ -179,11 +210,14 @@ def get_conversation_messages(
 def mark_read(phone_number: str, db: Session = Depends(get_db)):
     from app.services.whatsapp_service import normalize_phone_number
     normalized_phone = normalize_phone_number(phone_number)
+    clean_phone_10 = normalized_phone[-10:]
     db.query(WhatsAppInboxMessage).filter(
-        WhatsAppInboxMessage.supplier_phone == normalized_phone,
+        ((WhatsAppInboxMessage.supplier_phone == normalized_phone) |
+         (WhatsAppInboxMessage.supplier_phone == phone_number) |
+         (WhatsAppInboxMessage.supplier_phone.like(f"%{clean_phone_10}"))),
         WhatsAppInboxMessage.direction == "inbound",
         WhatsAppInboxMessage.is_read == False
-    ).update({"is_read": True})
+    ).update({"is_read": True}, synchronize_session=False)
     db.commit()
     return {"status": "ok"}
 
@@ -225,7 +259,8 @@ def send_media(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    from app.services.whatsapp_service import normalize_phone_number, send_media_message
+    import threading
+    from app.services.whatsapp_service import normalize_phone_number
     normalized_phone = normalize_phone_number(phone_number)
 
     # Save the file locally in uploads/media (served via /uploads FastAPI mount)
@@ -235,6 +270,11 @@ def send_media(
     file_path = os.path.join(upload_dir, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    # Get file size in MB
+    file_size_bytes = os.path.getsize(file_path)
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    print(f"[ATTACHMENT] Sending file {file.filename} of size {round(file_size_mb, 2)} MB")
 
     # Detect media type from extension
     ext = os.path.splitext(file.filename)[1].lower()
@@ -255,16 +295,62 @@ def send_media(
         else:
             mime_type = "application/octet-stream"
 
-    # Send via WhatsApp API
-    result = send_media_message(
-        phone_number=normalized_phone,
-        file_path=file_path,
-        filename=file.filename,
-        media_type=media_type,
-        mime_type=mime_type
-    )
+    # Meta limits: image size must be < 5MB and video must be < 16MB.
+    # If the file exceeds these limits, downgrade its transmission type to "document" so Meta allows up to 100MB.
+    if media_type == "image" and file_size_mb > 5.0:
+        print(f"[ATTACHMENT] Outbound image ({round(file_size_mb, 2)}MB) exceeds Meta limit. Downgrading to document.")
+        media_type = "document"
+        mime_type = "application/octet-stream"
+    elif media_type == "video" and file_size_mb > 16.0:
+        print(f"[ATTACHMENT] Outbound video ({round(file_size_mb, 2)}MB) exceeds Meta limit. Downgrading to document.")
+        media_type = "document"
+        mime_type = "application/octet-stream"
 
-    return {"status": "sent", "media_type": media_type, "whatsapp_response": result}
+    # Log outbound media to inbox DB immediately so it is visible in the local chat log instantly
+    rel_path = f"uploads/media/{file.filename}"
+    supplier = db.query(Supplier).filter(
+        (Supplier.whatsapp_number.like(f"%{normalized_phone[-10:]}")) |
+        (Supplier.whatsapp_number == normalized_phone)
+    ).first()
+
+    inbox_msg = WhatsAppInboxMessage(
+        supplier_id=supplier.id if supplier else None,
+        supplier_phone=normalized_phone,
+        message_text=f"Sent file: {file.filename}",
+        direction="outbound",
+        is_read=True,
+        media_type=media_type,
+        media_path=rel_path,
+        delivery_status="sent"
+    )
+    db.add(inbox_msg)
+    db.commit()
+    db.refresh(inbox_msg)
+
+    # Helper function to execute upload & send to Meta API in the background
+    def send_to_meta_bg(msg_id, phone, path, name, m_type, mime):
+        from app.services.whatsapp_service import send_media_message
+        try:
+            # Passes db_msg_id to update instead of logging a duplicate
+            send_media_message(
+                phone_number=phone,
+                file_path=path,
+                filename=name,
+                media_type=m_type,
+                mime_type=mime,
+                db_msg_id=msg_id
+            )
+        except Exception as e:
+            print(f"[BG-SEND] Failed to send media via Meta: {e}")
+
+    # Spawn thread to send via Meta API in the background
+    thread = threading.Thread(
+        target=send_to_meta_bg,
+        args=(inbox_msg.id, normalized_phone, file_path, file.filename, media_type, mime_type)
+    )
+    thread.start()
+
+    return {"status": "sent", "media_type": media_type, "message_id": inbox_msg.id}
 
 
 # ---------------------------------------------------------------------------

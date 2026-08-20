@@ -220,10 +220,10 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                                value="{{ rfq.payment_terms or '' }}"
                                placeholder="e.g. Immediate Against Delivery">
                         <datalist id="paymentTermsList">
-                            <option value="Immediate Against Delivery">
-                            <option value="2nd Day RTGS Against Delivery">
-                            <option value="100% Advance">
-                            <option value="30 Days Credit">
+                            <option value="Immediate Against Delivery"></option>
+                            <option value="2nd Day RTGS Against Delivery"></option>
+                            <option value="100% Advance"></option>
+                            <option value="30 Days Credit"></option>
                         </datalist>
                     </div>
                     <button class="btn btn-outline-primary btn-sm w-100 mb-3" id="saveDetailsBtn">
@@ -238,12 +238,12 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                     <div class="mb-2">
                         <label class="form-label fw-semibold">Site Contact Person</label>
                         <input type="text" class="form-control" id="contactPerson"
-                               placeholder="e.g. Mr. Pandhare">
+                               placeholder="e.g. Mr. Avdhut Chakradhar">
                     </div>
                     <div class="mb-1">
                         <label class="form-label fw-semibold">Site Contact Number</label>
                         <input type="text" class="form-control" id="contactNumber"
-                               placeholder="e.g. 9876543210">
+                               placeholder="e.g. 7219550051">
                     </div>
                     <small class="text-muted">Deadline &amp; contact are included in the WhatsApp message when you send.</small>
                 </div>
@@ -280,12 +280,17 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                             </div>
                             {% if ev.rv.whatsapp_status == "Sent" %}
                                 <span class="badge bg-success">Sent</span>
-                            {% elif ev.rv.whatsapp_status == "Failed" %}
+                            {% elif ev.rv.whatsapp_status and ev.rv.whatsapp_status.startswith("Failed") %}
                                 <span class="badge bg-danger">Failed</span>
                             {% else %}
-                                <span class="badge bg-secondary">Pending</span>
+                                <span class="badge bg-secondary">{{ ev.rv.whatsapp_status or "Pending" }}</span>
                             {% endif %}
                         </div>
+                        {% if ev.rv.whatsapp_status and ev.rv.whatsapp_status.startswith("Failed") %}
+                            <div class="text-danger small mt-1 fw-semibold" style="font-size: 0.72rem;">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ ev.rv.whatsapp_status }}
+                            </div>
+                        {% endif %}
                         <div class="mt-2">
                             {% if ev.quotation %}
                                 <a href="/dashboard/quotation/{{ ev.quotation.id }}" class="btn btn-sm btn-outline-info">
@@ -328,6 +333,32 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                     </div>
                     <button class="btn btn-success w-100 mt-2" id="addVendorsBtn">
                         <i class="bi bi-whatsapp me-1"></i> Send RFQ to Selected Vendors
+                    </button>
+                </div>
+            </div>
+
+            <!-- AI Online Supplier Discovery -->
+            <div class="card shadow-sm border-0 rounded-4 mt-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-robot text-primary me-2"></i>AI Online Discovery</h5>
+                    <button class="btn btn-sm btn-outline-primary" id="discoverSuppliersBtn">
+                        <i class="bi bi-search"></i> Search Online
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-2">Search the web automatically for matching local suppliers of these materials.</p>
+                    <div id="discoveredSupplierList" class="d-none" style="max-height: 260px; overflow-y: auto;">
+                        <!-- Populate dynamic items here -->
+                    </div>
+                    <div id="discoveryLoading" class="d-none text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <span class="ms-2 small text-muted">Searching Google...</span>
+                    </div>
+                    <div id="discoveryPlaceholder" class="text-center py-2 text-muted small">
+                        Click "Search Online" to find suppliers.
+                    </div>
+                    <button class="btn btn-primary w-100 mt-2 d-none" id="addDiscoveredBtn">
+                        <i class="bi bi-whatsapp me-1"></i> Add &amp; Send RFQ
                     </button>
                 </div>
             </div>
@@ -717,5 +748,103 @@ document.getElementById('sendRfqBtn').addEventListener('click', async () => {
     }
 });
 {% endif %}
+
+// ── AI Supplier Discovery scripts ──
+document.getElementById('discoverSuppliersBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('discoverSuppliersBtn');
+    const listEl = document.getElementById('discoveredSupplierList');
+    const loader = document.getElementById('discoveryLoading');
+    const placeholder = document.getElementById('discoveryPlaceholder');
+    const addBtn = document.getElementById('addDiscoveredBtn');
+
+    btn.disabled = true;
+    loader.classList.remove('d-none');
+    placeholder.classList.add('d-none');
+    listEl.classList.add('d-none');
+    addBtn.classList.add('d-none');
+
+    try {
+        const res = await fetch(`/rfqs/${rfqId}/discover-suppliers`);
+        const data = await res.json();
+        loader.classList.add('d-none');
+        btn.disabled = false;
+
+        if (res.ok && data.suppliers && data.suppliers.length > 0) {
+            listEl.innerHTML = data.suppliers.map((s, idx) => `
+                <label class="d-flex align-items-start gap-2 p-2 border rounded-3 mb-1">
+                    <input type="checkbox" class="form-check-input mt-1 discovered-cb" 
+                           data-name="${s.company_name}" 
+                           data-phone="${s.whatsapp_number}" 
+                           data-material="${s.material}">
+                    <div>
+                        <div class="fw-semibold small">${s.company_name}</div>
+                        <div class="text-muted small">📞 ${s.whatsapp_number}</div>
+                        <div class="text-muted small">🌐 <a href="${s.website}" target="_blank" class="text-decoration-none small">Source Page</a></div>
+                        <span class="badge bg-light text-dark border small mt-1">${s.source}</span>
+                    </div>
+                </label>
+            `).join('');
+            listEl.classList.remove('d-none');
+            addBtn.classList.remove('d-none');
+        } else {
+            placeholder.innerText = 'No matching suppliers found online for this material.';
+            placeholder.classList.remove('d-none');
+        }
+    } catch (e) {
+        loader.classList.add('d-none');
+        btn.disabled = false;
+        placeholder.innerText = 'Error searching online: ' + e.message;
+        placeholder.classList.remove('d-none');
+    }
+});
+
+document.getElementById('addDiscoveredBtn').addEventListener('click', async () => {
+    const listEl = document.getElementById('discoveredSupplierList');
+    const checked = Array.from(listEl.querySelectorAll('.discovered-cb:checked')).map(cb => ({
+        company_name: cb.dataset.name,
+        whatsapp_number: cb.dataset.phone,
+        material: cb.dataset.material
+    }));
+
+    if (checked.length === 0) {
+        alert('Select at least one discovered supplier.');
+        return;
+    }
+
+    if (!confirm(`Add these ${checked.length} supplier(s) and send the RFQ via WhatsApp?`)) {
+        return;
+    }
+
+    const btn = document.getElementById('addDiscoveredBtn');
+    btn.disabled = true;
+
+    const deadline = document.getElementById('resendDeadline') ? document.getElementById('resendDeadline').value.trim() : null;
+    const contact_person = document.getElementById('resendContact') ? document.getElementById('resendContact').value.trim() : null;
+    const contact_number = document.getElementById('contactNumber') ? document.getElementById('contactNumber').value.trim() : null;
+
+    try {
+        const res = await fetch(`/rfqs/${rfqId}/add-discovered-suppliers`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                suppliers: checked,
+                deadline,
+                contact_person,
+                contact_number
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            alert(`✅ Added and notified ${data.notified_count} supplier(s) successfully.`);
+            window.location.reload();
+        } else {
+            alert(data.detail || 'Failed to add and send.');
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+    }
+});
 </script>
 {% endblock %}

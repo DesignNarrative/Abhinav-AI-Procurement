@@ -239,25 +239,28 @@ Supplier Details
     </div>
 
     <!-- ========================= -->
-    <!-- Approval -->
+    <!-- Supplier Management Actions -->
     <!-- ========================= -->
 
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-header bg-white">
-            <h4 class="fw-bold mb-0">✅ Approval Decision</h4>
+            <h4 class="fw-bold mb-0">🛠️ Supplier Management Actions</h4>
         </div>
         <div class="card-body">
-            {% if supplier.approval_remarks %}
-            <div class="alert alert-info small mb-3">
-                <strong>Remarks:</strong> {{ supplier.approval_remarks }}
+            {% if supplier.approval_remarks and supplier.registration_status == "REJECTED" %}
+            <div class="alert alert-danger small mb-3">
+                <strong>Rejection Reason:</strong> {{ supplier.approval_remarks }}
             </div>
             {% endif %}
             <div class="d-flex gap-3">
                 <button id="approve-btn" class="btn btn-success">
                     <i class="bi bi-check-circle"></i> Approve Supplier
                 </button>
-                <button id="reject-btn" class="btn btn-danger">
+                <button id="reject-btn" class="btn btn-warning">
                     <i class="bi bi-x-circle"></i> Reject Supplier
+                </button>
+                <button id="delete-btn" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Delete Supplier
                 </button>
             </div>
         </div>
@@ -297,8 +300,13 @@ Supplier Details
             <textarea class="form-control" id="edit_registered_address" rows="2">{{ supplier.registered_address or '' }}</textarea>
           </div>
           <div class="col-md-6">
-            <label class="form-label fw-semibold">Supplier Category</label>
-            <input type="text" class="form-control" id="edit_supplier_category" value="{{ supplier.supplier_category or '' }}" placeholder="e.g. Cement, Steel, Paint">
+            <label class="form-label fw-semibold">Supplier Category <small class="text-muted fst-italic">(Auto-generated)</small></label>
+            <input type="text" class="form-control bg-light" id="edit_supplier_category"
+                   value="{{ supplier.supplier_category or '' }}" readonly
+                   placeholder="Auto-generated from business &amp; materials answers">
+            <div class="form-text text-muted">
+              ℹ️ Updated automatically when you save changes to <strong>"What work does your company do?"</strong> or <strong>"Material Types"</strong>.
+            </div>
           </div>
           <div class="col-md-6">
             <label class="form-label fw-semibold">Material Types</label>
@@ -364,7 +372,7 @@ Supplier Details
 
         <!-- MSME Information -->
         <h6 class="fw-bold text-primary mb-2">🏭 MSME Information</h6>
-        <div class="row g-3">
+        <div class="row g-3 mb-4">
           <div class="col-md-4">
             <label class="form-label fw-semibold">MSME Registered</label>
             <select class="form-select" id="edit_is_msme">
@@ -375,6 +383,31 @@ Supplier Details
           <div class="col-md-4">
             <label class="form-label fw-semibold">MSME Number</label>
             <input type="text" class="form-control" id="edit_msme_number" value="{{ supplier.msme_number or '' }}">
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Document Uploads -->
+        <h6 class="fw-bold text-primary mb-2">📄 Documents</h6>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">GST Registration Certificate (PDF/Image)</label>
+            <input type="file" class="form-control" id="edit_gst_file" accept=".pdf,.jpg,.jpeg,.png">
+            {% if supplier.gst_certificate_path %}
+              <div class="form-text text-success">
+                <i class="bi bi-file-earmark-check"></i> Current file: {{ supplier.gst_certificate_path.split('/')[-1] }}
+              </div>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">MSME Certificate (PDF/Image)</label>
+            <input type="file" class="form-control" id="edit_msme_file" accept=".pdf,.jpg,.jpeg,.png">
+            {% if supplier.msme_certificate_path %}
+              <div class="form-text text-success">
+                <i class="bi bi-file-earmark-check"></i> Current file: {{ supplier.msme_certificate_path.split('/')[-1] }}
+              </div>
+            {% endif %}
           </div>
         </div>
 
@@ -395,8 +428,29 @@ Supplier Details
 <script>
 const supplierId = {{ supplier.id }};
 
+// File upload helper
+async function uploadFile(inputId, endpoint) {
+    const input = document.getElementById(inputId);
+    if (!input || !input.files || input.files.length === 0) return null;
+    
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+    
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        body: formData
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'File upload failed');
+    }
+    const data = await res.json();
+    return data.file_path;
+}
+
 // ── Edit Supplier ──────────────────────────────────────────────────
 document.getElementById('saveEditBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveEditBtn');
     const fields = [
         'company_name', 'principal_business', 'gst_number', 'registered_address',
         'supplier_category', 'material_types',
@@ -418,6 +472,19 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
     payload.is_msme = document.getElementById('edit_is_msme').value === 'true';
 
     try {
+        btn.disabled = true;
+        const oldText = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Uploading files...';
+
+        // Upload files if selected
+        const gstPath = await uploadFile('edit_gst_file', '/upload/gst-certificate');
+        const msmePath = await uploadFile('edit_msme_file', '/upload/msme-certificate');
+
+        if (gstPath) payload.gst_certificate_path = gstPath;
+        if (msmePath) payload.msme_certificate_path = msmePath;
+
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
         const res = await fetch(`/suppliers/${supplierId}/update`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -429,56 +496,86 @@ document.getElementById('saveEditBtn').addEventListener('click', async () => {
             window.location.reload();
         } else {
             alert(data.detail || 'Failed to update supplier.');
+            btn.disabled = false;
+            btn.innerHTML = oldText;
         }
     } catch (e) {
         alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save Changes';
     }
 });
 
 // ── Approve Supplier ─────────────────────────────────────────────
-document.getElementById('approve-btn').addEventListener('click', async () => {
-    const remarks = prompt('Enter approval remarks (optional):');
-    if (remarks === null) return; // user cancelled prompt
+if (document.getElementById('approve-btn')) {
+    document.getElementById('approve-btn').addEventListener('click', async () => {
+        const remarks = prompt('Enter approval remarks (optional):');
+        if (remarks === null) return; // user cancelled prompt
 
-    try {
-        const res = await fetch(`/suppliers/${supplierId}/approve`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remarks: remarks || 'Approved by Purchase Manager' })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            alert('✅ Supplier approved successfully.');
-            window.location.reload();
-        } else {
-            alert(data.detail || 'Failed to approve supplier.');
+        try {
+            const res = await fetch(`/suppliers/${supplierId}/approve`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ remarks: remarks || 'Approved by Purchase Manager' })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert('✅ Supplier approved successfully.');
+                window.location.reload();
+            } else {
+                alert(data.detail || 'Failed to approve supplier.');
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
         }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-});
+    });
+}
+
+// ── Delete Supplier ──────────────────────────────────────────────
+if (document.getElementById('delete-btn')) {
+    document.getElementById('delete-btn').addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to completely delete this supplier from the database? This action cannot be undone.')) return;
+
+        try {
+            const res = await fetch(`/suppliers/${supplierId}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert('✅ Supplier deleted successfully.');
+                window.location.href = '/dashboard/suppliers';
+            } else {
+                alert(data.detail || 'Failed to delete supplier.');
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    });
+}
 
 // ── Reject Supplier ──────────────────────────────────────────────
-document.getElementById('reject-btn').addEventListener('click', async () => {
-    const remarks = prompt('Enter rejection reason:');
-    if (!remarks) { alert('Rejection reason is required.'); return; }
+if (document.getElementById('reject-btn')) {
+    document.getElementById('reject-btn').addEventListener('click', async () => {
+        const remarks = prompt('Enter rejection reason:');
+        if (!remarks) { alert('Rejection reason is required.'); return; }
 
-    try {
-        const res = await fetch(`/suppliers/${supplierId}/reject`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remarks })
-        });
-        const data = await res.json();
-        if (res.ok) {
-            alert('Supplier rejected.');
-            window.location.reload();
-        } else {
-            alert(data.detail || 'Failed to reject supplier.');
+        try {
+            const res = await fetch(`/suppliers/${supplierId}/reject`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ remarks })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert('Supplier rejected.');
+                window.location.reload();
+            } else {
+                alert(data.detail || 'Failed to reject supplier.');
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
         }
-    } catch (e) {
-        alert('Error: ' + e.message);
-    }
-});
+    });
+}
 </script>
 {% endblock %}

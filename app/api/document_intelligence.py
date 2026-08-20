@@ -301,10 +301,27 @@ def create_quotation_draft(
 # ──────────────────────────────────────────────────────────────
 # PATCH /document-intelligence/{document_uuid}/approve
 # ──────────────────────────────────────────────────────────────
+from pydantic import BaseModel
+from typing import List, Optional
+
+class ApproveItem(BaseModel):
+    id: int
+    brand_offered: Optional[str] = None
+    quoted_quantity: Optional[float] = None
+    basic_rate: Optional[float] = None
+    tax_percent: Optional[float] = None
+
+class ApproveDocumentRequest(BaseModel):
+    payment_terms: Optional[str] = None
+    delivery_timeline: Optional[str] = None
+    grand_total: Optional[float] = None
+    items: Optional[List[ApproveItem]] = None
+
 
 @router.patch("/{document_uuid}/approve")
 def approve_document(
     document_uuid: str,
+    payload: Optional[ApproveDocumentRequest] = None,
     approved_by: str = Query("HUMAN_REVIEWER", description="Name/ID of reviewer approving"),
     db: Session = Depends(get_db)
 ):
@@ -317,6 +334,7 @@ def approve_document(
     """
     from app.models.document_ingestion_log import DocumentIngestionLog
     from app.models.quotation import Quotation
+    from app.models.quotation_item import QuotationItem
     import os, json
     from app.services.document_intelligence_service import INGEST_FOLDER
 
@@ -332,9 +350,9 @@ def approve_document(
         raise HTTPException(status_code=400, detail="No extraction JSON found. Run /parse first.")
 
     with open(json_path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+        extraction_data = json.load(f)
 
-    doc_number = payload.get("document_metadata", {}).get("document_number", {}).get("value")
+    doc_number = extraction_data.get("document_metadata", {}).get("document_number", {}).get("value")
     quotation_number = doc_number if doc_number else f"AI-DRAFT-{document_uuid[:8].upper()}"
 
     quotation = db.query(Quotation).filter(Quotation.quotation_number == quotation_number).first()
@@ -346,6 +364,41 @@ def approve_document(
 
     if quotation.status == "Approved":
         return {"message": "Quotation is already approved.", "quotation_id": quotation.id, "status": quotation.status}
+
+    # Save any edits from the reviewer
+    if payload:
+        if payload.payment_terms is not None:
+            quotation.payment_terms = payload.payment_terms
+        if payload.delivery_timeline is not None:
+            quotation.delivery_timeline = payload.delivery_timeline
+        if payload.grand_total is not None:
+            quotation.grand_total = payload.grand_total
+
+        if payload.items:
+            for it in payload.items:
+                q_item = db.query(QuotationItem).filter(QuotationItem.id == it.id).first()
+                if q_item:
+                    if it.brand_offered is not None:
+                        q_item.brand_offered = it.brand_offered
+                    if it.quoted_quantity is not None:
+                        q_item.quoted_quantity = it.quoted_quantity
+                    if it.basic_rate is not None:
+                        q_item.basic_rate = it.basic_rate
+                    if it.tax_percent is not None:
+                        q_item.tax_percent = it.tax_percent
+
+                    # Recompute item total & landed rate
+                    qty = q_item.quoted_quantity or 0.0
+                    rate = q_item.basic_rate or 0.0
+                    tax = q_item.tax_percent or 0.0
+                    discount = q_item.discount_percent or 0.0
+
+                    taxable = float(rate) * (1 - float(discount) / 100.0)
+                    landed = taxable * (1 + float(tax) / 100.0)
+                    calculated_total = float(qty) * landed
+
+                    q_item.final_landed_rate = round(landed, 3)
+                    q_item.total_item_amount = calculated_total
 
     quotation.status = "Approved"
     db.commit()

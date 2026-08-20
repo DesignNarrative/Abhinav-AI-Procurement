@@ -385,6 +385,21 @@ Supplier Management
           <div class="col-md-6">
             <label class="form-label fw-bold text-dark mb-1">7️⃣ WhatsApp Number <span class="text-danger">*</span></label>
             <input type="text" class="form-control" id="reg_whatsapp_number" required placeholder="10-digit mobile number" maxlength="10">
+            <div class="form-text text-warning fw-semibold mt-1">
+                ⚠️ IMPORTANT: Manually registered suppliers must send "Hi" first to +91 72195 50020 to authorize delivery.
+            </div>
+          </div>
+
+          <!-- Authorized Person Name -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">Authorized Person Name</label>
+            <input type="text" class="form-control" id="reg_authorized_person_name" placeholder="Enter Authorized Person Name">
+          </div>
+
+          <!-- Designation -->
+          <div class="col-md-6">
+            <label class="form-label fw-bold text-dark mb-1">Designation</label>
+            <input type="text" class="form-control" id="reg_designation" placeholder="e.g. Proprietor, Director, Partner">
           </div>
           
           <!-- 8️⃣ Bank Name -->
@@ -498,26 +513,7 @@ async function uploadFile(inputId, endpoint) {
 document.getElementById('submitRegisterBtn').addEventListener('click', async () => {
     const btn = document.getElementById('submitRegisterBtn');
     
-    // Required fields check
-    const required = {
-        reg_company_name: 'Company Name',
-        reg_registered_address: 'Registered Address',
-        reg_contact_person_name: 'Contact Person Name',
-        reg_whatsapp_number: 'WhatsApp Number',
-        reg_bank_name: 'Bank Name',
-        reg_beneficiary_name: 'Beneficiary Name',
-        reg_bank_account_number: 'Account Number',
-        reg_bank_ifsc: 'IFSC Code'
-    };
-    
-    for (const [id, label] of Object.entries(required)) {
-        const val = document.getElementById(id).value.trim();
-        if (!val) {
-            alert(`Please fill in required field: ${label}`);
-            document.getElementById(id).focus();
-            return;
-        }
-    }
+    // No fields are compulsory for manual registration
 
     try {
         btn.disabled = true;

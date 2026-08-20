@@ -12,33 +12,19 @@ from pydantic import (
 
 
 class SupplierCreate(BaseModel):
-
-    company_name: str
-
+    company_name: Optional[str] = None
     principal_business: Optional[str] = None
-
     gst_number: Optional[str] = None
-
-
-    registered_address: str
-
-    contact_person_name: str
-
+    registered_address: Optional[str] = None
+    contact_person_name: Optional[str] = None
     contact_person_email: Optional[EmailStr] = None
-
-    whatsapp_number: str
-
+    whatsapp_number: Optional[str] = None
     supplier_category: Optional[str] = None
-
     material_types: Optional[str] = None
-
-    bank_name: str
-
-    beneficiary_name: str
-
-    bank_account_number: str
-
-    bank_ifsc: str
+    bank_name: Optional[str] = None
+    beneficiary_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
 
     branch_name: Optional[str] = None
 
@@ -65,6 +51,8 @@ class SupplierCreate(BaseModel):
         cls,
         value
     ):
+        if not value:
+            return value
         value = value.strip()
 
         if len(value) < 3:
@@ -81,26 +69,8 @@ class SupplierCreate(BaseModel):
         cls,
         value
     ):
-        gst_pattern = (
-            r'^[0-9]{2}'
-            r'[A-Z]{5}'
-            r'[0-9]{4}'
-            r'[A-Z]{1}'
-            r'[A-Z0-9]{1}'
-            r'Z'
-            r'[0-9A-Z]{1}$'
-        )
-
-        value = value.upper()
-
-        if not re.match(
-            gst_pattern,
-            value
-        ):
-            raise ValueError(
-                "Invalid GST Number"
-            )
-
+        if value:
+            return value.strip().upper()
         return value
 
 
@@ -110,19 +80,8 @@ class SupplierCreate(BaseModel):
         cls,
         value
     ):
-
-        if not value.isdigit():
-
-            raise ValueError(
-                "WhatsApp number must contain digits only"
-            )
-
-        if len(value) != 10:
-
-            raise ValueError(
-                "WhatsApp number must be exactly 10 digits"
-            )
-
+        if value:
+            return "".join(c for c in value if c.isdigit())
         return value
 
 
@@ -132,13 +91,8 @@ class SupplierCreate(BaseModel):
         cls,
         value
     ):
-
-        if not value.isdigit():
-
-            raise ValueError(
-                "Bank account number must contain digits only"
-            )
-
+        if value:
+            return value.strip()
         return value
 
 
@@ -148,23 +102,8 @@ class SupplierCreate(BaseModel):
         cls,
         value
     ):
-
-        value = value.upper()
-
-        ifsc_pattern = (
-            r'^[A-Z]{4}'
-            r'0'
-            r'[A-Z0-9]{6}$'
-        )
-
-        if not re.match(
-            ifsc_pattern,
-            value
-        ):
-            raise ValueError(
-                "Invalid IFSC Code"
-            )
-
+        if value:
+            return value.strip().upper()
         return value
 
 
@@ -289,6 +228,8 @@ class SupplierUpdate(BaseModel):
 
     is_msme: Optional[bool] = None
     msme_number: Optional[str] = None
+    msme_certificate_path: Optional[str] = None
+    gst_certificate_path: Optional[str] = None
 
     authorized_person_name: Optional[str] = None
     designation: Optional[str] = None

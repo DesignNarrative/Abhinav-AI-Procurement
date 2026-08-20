@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, HTTPException
+﻿from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -86,3 +86,43 @@ def quotation_details(
             "vendor": vendor
         }
     )
+
+
+from fastapi import Body
+from typing import Optional as _Optional
+from pydantic import BaseModel as _BaseModel
+
+
+class QuotationEditPayload(_BaseModel):
+    payment_terms: _Optional[str] = None
+    delivery_timeline: _Optional[str] = None
+    grand_total: _Optional[float] = None
+    freight_amount_total: _Optional[float] = None
+    loading_unloading_total: _Optional[float] = None
+
+
+@router.put("/{quotation_id}/edit")
+def edit_quotation(
+    quotation_id: int,
+    payload: QuotationEditPayload,
+    db: Session = Depends(get_db)
+):
+    """Edit quotation header fields from dashboard."""
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+
+    if payload.payment_terms is not None:
+        quotation.payment_terms = payload.payment_terms
+    if payload.delivery_timeline is not None:
+        quotation.delivery_timeline = payload.delivery_timeline
+    if payload.grand_total is not None:
+        quotation.grand_total = payload.grand_total
+    if payload.freight_amount_total is not None:
+        quotation.freight_amount_total = payload.freight_amount_total
+    if payload.loading_unloading_total is not None:
+        quotation.loading_unloading_total = payload.loading_unloading_total
+
+    db.commit()
+    db.refresh(quotation)
+    return {"success": True, "quotation_id": quotation.id}

@@ -12,6 +12,8 @@ class SupplierService:
 
         total_suppliers = db.query(
             Supplier
+        ).filter(
+            Supplier.registration_status != "PENDING_REGISTRATION"
         ).count()
 
         approved_suppliers = db.query(
@@ -34,6 +36,8 @@ class SupplierService:
 
         recent_suppliers = db.query(
             Supplier
+        ).filter(
+            Supplier.registration_status != "PENDING_REGISTRATION"
         ).order_by(
             Supplier.created_at.desc()
         ).limit(10).all()

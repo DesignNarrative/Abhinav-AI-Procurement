@@ -383,7 +383,202 @@ Requirement Details
     </div>
 
     <!-- =======================================================
-     Add Material Modal
+         Procurement Progress
+    ======================================================== -->
+
+    <div class="card shadow-sm border-0 rounded-4 mt-4">
+
+        <div class="card-header bg-white">
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-diagram-3 me-2 text-primary"></i>Procurement Progress
+            </h5>
+        </div>
+
+        <div class="card-body">
+
+            <!-- Step 1: RFQ -->
+            <div class="d-flex align-items-start mb-4">
+                <div class="me-3 text-center" style="min-width:36px;">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                         style="width:36px;height:36px;background:{% if rfq %}#198754{% else %}#adb5bd{% endif %};">1</div>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="fw-semibold mb-1">RFQ Generated</h6>
+                    {% if rfq %}
+                        <div class="text-success small mb-1"><i class="bi bi-check-circle-fill me-1"></i>Done</div>
+                        <div class="small">
+                            RFQ Number:
+                            <a href="/dashboard/rfq/{{ rfq.id }}" class="fw-semibold text-decoration-none">
+                                {{ rfq.rfq_number }}
+                            </a>
+                            &nbsp;·&nbsp;
+                            Status:
+                            <span class="badge
+                                {% if rfq.status == 'Draft' %}bg-secondary
+                                {% elif rfq.status == 'Sent' %}bg-primary
+                                {% elif rfq.status == 'Quotation Received' %}bg-info text-dark
+                                {% elif rfq.status == 'Closed' %}bg-dark
+                                {% else %}bg-light text-dark{% endif %}">
+                                {{ rfq.status }}
+                            </span>
+                            &nbsp;·&nbsp;
+                            <span class="text-muted">Created {{ rfq.created_at.strftime("%d %b %Y") if rfq.created_at else "" }}</span>
+                        </div>
+                        <a href="/dashboard/rfq/{{ rfq.id }}" class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="bi bi-file-text me-1"></i>View RFQ
+                        </a>
+                    {% else %}
+                        <div class="text-muted small mb-1"><i class="bi bi-hourglass me-1"></i>Not yet generated</div>
+                        <button id="generateRfqBtn2"
+                                class="btn btn-sm btn-success mt-1"
+                                {% if not can_generate_rfq %}disabled{% endif %}
+                                onclick="document.getElementById('generateRfqBtn').click()">
+                            <i class="bi bi-plus-circle me-1"></i>Generate RFQ
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <hr class="my-0 mb-4">
+
+            <!-- Step 2: Sent to Suppliers -->
+            <div class="d-flex align-items-start mb-4">
+                <div class="me-3 text-center" style="min-width:36px;">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                         style="width:36px;height:36px;background:{% if enriched_vendors %}#198754{% elif rfq %}#0d6efd{% else %}#adb5bd{% endif %};">2</div>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="fw-semibold mb-1">Sent to Suppliers</h6>
+                    {% if enriched_vendors %}
+                        <div class="text-success small mb-2"><i class="bi bi-check-circle-fill me-1"></i>Sent to {{ enriched_vendors|length }} supplier{{ 's' if enriched_vendors|length != 1 else '' }}</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0" style="max-width:600px;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Supplier</th>
+                                        <th>WhatsApp Status</th>
+                                        <th>Quotation</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ev in enriched_vendors %}
+                                    <tr>
+                                        <td class="text-muted">{{ loop.index }}</td>
+                                        <td>
+                                            {% if ev.vendor %}
+                                                <strong>{{ ev.vendor.company_name }}</strong>
+                                                {% if ev.vendor.contact_person_name %}
+                                                <br><small class="text-muted">{{ ev.vendor.contact_person_name }}</small>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-muted">Unknown Supplier</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if ev.rv.whatsapp_status %}
+                                                {% if ev.rv.whatsapp_status.startswith("Failed") %}
+                                                    <span class="badge bg-danger">Failed</span>
+                                                    <div class="text-danger small mt-1 fw-semibold" style="font-size: 0.68rem; line-height: 1.1;">
+                                                        {{ ev.rv.whatsapp_status }}
+                                                    </div>
+                                                {% else %}
+                                                    <span class="badge
+                                                        {% if ev.rv.whatsapp_status == 'Sent' %}bg-primary
+                                                        {% elif ev.rv.whatsapp_status == 'Delivered' %}bg-info text-dark
+                                                        {% elif ev.rv.whatsapp_status == 'Read' %}bg-success
+                                                        {% else %}bg-secondary{% endif %}">
+                                                        {{ ev.rv.whatsapp_status }}
+                                                    </span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">Pending</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if ev.quotation %}
+                                                <a href="/dashboard/quotations/{{ ev.quotation.id }}"
+                                                   class="badge bg-success text-decoration-none">
+                                                    ✓ {{ ev.quotation.quotation_number }}
+                                                </a>
+                                                <div class="small text-muted">
+                                                    ₹{{ "{:,.0f}".format(ev.quotation.grand_total) if ev.quotation.grand_total else "—" }}
+                                                </div>
+                                            {% else %}
+                                                <span class="badge bg-light text-muted">Awaiting</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% elif rfq %}
+                        <div class="text-muted small"><i class="bi bi-hourglass me-1"></i>RFQ created but not yet sent to suppliers.</div>
+                    {% else %}
+                        <div class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Generate RFQ first to send to suppliers.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <hr class="my-0 mb-4">
+
+            <!-- Step 3: Quotations Received -->
+            <div class="d-flex align-items-start mb-4">
+                <div class="me-3 text-center" style="min-width:36px;">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                         style="width:36px;height:36px;background:{% if quote_count > 0 %}#198754{% elif enriched_vendors %}#0d6efd{% else %}#adb5bd{% endif %};">3</div>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="fw-semibold mb-1">Quotations Received</h6>
+                    {% if quote_count > 0 %}
+                        <div class="text-success small mb-1">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            {{ quote_count }} out of {{ enriched_vendors|length }} supplier{{ 's' if enriched_vendors|length != 1 else '' }} have replied
+                        </div>
+                    {% elif enriched_vendors %}
+                        <div class="text-muted small"><i class="bi bi-hourglass me-1"></i>Waiting for supplier responses...</div>
+                    {% else %}
+                        <div class="text-muted small"><i class="bi bi-dash-circle me-1"></i>No suppliers contacted yet.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <hr class="my-0 mb-4">
+
+            <!-- Step 4: Compare -->
+            <div class="d-flex align-items-start">
+                <div class="me-3 text-center" style="min-width:36px;">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white"
+                         style="width:36px;height:36px;background:{% if can_compare %}#198754{% else %}#adb5bd{% endif %};">4</div>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="fw-semibold mb-1">Compare Quotes</h6>
+                    {% if can_compare %}
+                        <div class="text-success small mb-2"><i class="bi bi-check-circle-fill me-1"></i>{{ quote_count }} quotes ready to compare</div>
+                        <a href="/dashboard/rfq/{{ rfq.id }}/comparison" class="btn btn-success">
+                            <i class="bi bi-bar-chart-fill me-1"></i>Open Comparison Grid
+                        </a>
+                    {% elif rfq and quote_count == 1 %}
+                        <div class="text-warning small mb-1"><i class="bi bi-exclamation-circle me-1"></i>Need at least 2 quotations to compare. Currently have {{ quote_count }}.</div>
+                        <button class="btn btn-outline-secondary btn-sm" disabled>
+                            <i class="bi bi-bar-chart me-1"></i>Compare Quotes (Need 1 more)
+                        </button>
+                    {% else %}
+                        <div class="text-muted small"><i class="bi bi-dash-circle me-1"></i>Awaiting quotations before comparison is available.</div>
+                        <button class="btn btn-outline-secondary btn-sm" disabled>
+                            <i class="bi bi-bar-chart me-1"></i>Compare Quotes
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- =======================================================
+         Add Material Modal
 ======================================================== -->
 
 <div

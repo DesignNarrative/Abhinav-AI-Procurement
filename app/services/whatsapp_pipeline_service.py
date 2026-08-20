@@ -192,16 +192,16 @@ def _process_whatsapp_document_pipeline_impl(
     else:
         clean_phone_10 = clean_phone
 
-    # Lookup approved supplier
+    # Lookup supplier
     supplier = db.query(Supplier).filter(
         (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
         (Supplier.whatsapp_number == sender_phone)
     ).filter(
-        Supplier.registration_status == "APPROVED"
+        Supplier.registration_status.in_(["APPROVED", "PENDING_REGISTRATION"])
     ).first()
 
     if not supplier:
-        logger.warning(f"No approved supplier found for phone number: {sender_phone}")
+        logger.warning(f"No supplier found for phone number: {sender_phone}")
         return {
             "status": "ignored",
             "reason": f"No approved supplier matches sender phone: {sender_phone}"
@@ -279,11 +279,20 @@ def _process_whatsapp_document_pipeline_impl(
         # Only send a processing receipt AFTER classification.
         # For QUOTATION or INVOICE: notify supplier and run pipeline.
         # For anything else (catalogue, certificate, photo, casual): stay silent.
-        if doc_type in ["QUOTATION", "INVOICE"]:
-            print(f"[PIPELINE] Sending processing receipt to {sender_phone}")
+        if doc_type == "QUOTATION":
+            print(f"[PIPELINE] Sending quotation receipt to {sender_phone}")
+            msg = "Thank you for sharing your quotation. We have received it and our purchase team will review and get back to you shortly."
+            if supplier.registration_status == "PENDING_REGISTRATION":
+                msg += "\n\n📋 *Vendor Registration*: Please complete your profile registration to participate. Reply *REGISTER* to begin."
             send_text_message(
                 sender_phone,
-                f"We have received your {doc_type.lower()} and our AI is processing it. You will receive a confirmation shortly."
+                msg
+            )
+        elif doc_type == "INVOICE":
+            print(f"[PIPELINE] Sending invoice receipt to {sender_phone}")
+            send_text_message(
+                sender_phone,
+                "We have received your invoice and our AI is processing it. You will receive a confirmation shortly."
             )
         else:
             print(f"[PIPELINE] doc_type='{doc_type}' — bot stays silent, file visible in PM inbox.")
@@ -383,6 +392,12 @@ def _finalize_document(
     # Trigger Phase 9: Auto-Drafting to DB if the target RFQ can be resolved
     # deterministically (explicit RFQ number > single candidate > item match).
     # Never guess between multiple RFQs — ambiguous cases go to manual review.
+    # Determine if this came from a WhatsApp text quotation
+    is_text = False
+    log = db.query(DocumentIngestionLog).filter(DocumentIngestionLog.document_uuid == uuid).first()
+    if log and log.original_filename == "whatsapp_text_quotation.txt":
+        is_text = True
+
     rfq, resolve_reason = _resolve_target_rfq(db, supplier, uuid)
 
     if rfq:
@@ -400,13 +415,12 @@ def _finalize_document(
                 f"📋 Quotation received — linked to {rfq.rfq_number}. AI processing complete."
             )
 
-            # Send success WhatsApp message to supplier
-            send_text_message(
-                sender_phone,
-                f"Dear {supplier.contact_person_name},\n\n"
-                f"Thank you! Your quotation for RFQ {rfq.rfq_number} has been received and processed successfully. "
-                f"A draft quotation has been generated for our procurement team's review."
-            )
+            if is_text:
+                msg = f"Thank you! We have received and recorded your quotation rates for RFQ {rfq.rfq_number}."
+                if supplier.registration_status == "PENDING_REGISTRATION":
+                    msg += "\n\n📋 *Vendor Registration*: Please complete your profile registration to participate. Reply *REGISTER* to begin."
+                send_text_message(sender_phone, msg)
+
             return {
                 "status": "processed",
                 "document_uuid": uuid,
@@ -425,13 +439,12 @@ def _finalize_document(
                 f"📋 Quotation received — {rfq.rfq_number} (manual review needed, draft error)."
             )
 
-            # Send warning/manual-review WhatsApp message to supplier
-            send_text_message(
-                sender_phone,
-                f"Dear {supplier.contact_person_name},\n\n"
-                f"We received your quotation document and extracted the details, but could not automatically "
-                f"draft it into our system due to a validation warning. Our procurement team will review it manually."
-            )
+            if is_text:
+                msg = f"We received your quotation rates but could not draft them automatically. Our purchase team will review them manually."
+                if supplier.registration_status == "PENDING_REGISTRATION":
+                    msg += "\n\n📋 *Vendor Registration*: Please complete your profile registration to participate. Reply *REGISTER* to begin."
+                send_text_message(sender_phone, msg)
+
             return {
                 "status": "processed",
                 "document_uuid": uuid,
@@ -447,14 +460,12 @@ def _finalize_document(
             "📋 Quotation received — no active RFQ matched (manual review needed)."
         )
 
-        # Send confirmation WhatsApp message to supplier
-        send_text_message(
-            sender_phone,
-            f"Dear {supplier.contact_person_name},\n\n"
-            f"We have received your quotation document and processed it. "
-            f"However, we could not find an active Request for Quotation (RFQ) associated with your profile. "
-            f"Our team will review your quote manually."
-        )
+        if is_text:
+            msg = "Thank you! We have received your quotation rates. Our purchase team will review them shortly."
+            if supplier.registration_status == "PENDING_REGISTRATION":
+                msg += "\n\n📋 *Vendor Registration*: Please complete your profile registration to participate. Reply *REGISTER* to begin."
+            send_text_message(sender_phone, msg)
+
         return {
             "status": "processed",
             "document_uuid": uuid,
@@ -475,14 +486,12 @@ def _finalize_document(
             "📋 Quotation received — multiple RFQs matched (manual review needed)."
         )
 
-        send_text_message(
-            sender_phone,
-            f"Dear {supplier.contact_person_name},\n\n"
-            f"Thank you! Your quotation has been received and is under manual "
-            f"review by our procurement team. "
-            f"Tip: to speed up processing next time, please mention the RFQ "
-            f"number (e.g. RFQ-2026-004) in your quotation."
-        )
+        if is_text:
+            msg = "Thank you! We have received your quotation rates. Our purchase team will review them shortly."
+            if supplier.registration_status == "PENDING_REGISTRATION":
+                msg += "\n\n📋 *Vendor Registration*: Please complete your profile registration to participate. Reply *REGISTER* to begin."
+            send_text_message(sender_phone, msg)
+
         return {
             "status": "processed",
             "document_uuid": uuid,
@@ -556,30 +565,8 @@ def _mark_failed(
         logger.error(f"Failed to persist FAILED status for {uuid}: {str(db_err)}", exc_info=True)
         db.rollback()
 
-    try:
-        from fastapi import HTTPException as _HTTPException
-        # Do NOT send a confusing error message if the file type is simply not
-        # supported for AI processing (HTTP 400). Those files are already logged
-        # in the dashboard inbox so the PM can view and reply manually.
-        is_unsupported_type = (
-            isinstance(error, _HTTPException) and error.status_code == 400
-        )
-        if not is_unsupported_type:
-            contact = supplier.contact_person_name if supplier else "Supplier"
-            send_text_message(
-                sender_phone,
-                f"Dear {contact},\n\n"
-                f"We received your document but our system could not read it automatically. "
-                f"Our procurement team has been notified and will review it manually. "
-                f"Thank you for your patience."
-            )
-        else:
-            logger.info(
-                f"Skipping error WhatsApp reply for unsupported file type (HTTP 400). "
-                f"File is visible in the PM dashboard inbox."
-            )
-    except Exception:
-        pass
+    # Do not send failure messages to the supplier.
+    pass
 
     return {
         "status": "failed",
@@ -632,14 +619,14 @@ def _process_whatsapp_text_quotation_impl(
         (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
         (Supplier.whatsapp_number == sender_phone)
     ).filter(
-        Supplier.registration_status == "APPROVED"
+        Supplier.registration_status.in_(["APPROVED", "PENDING_REGISTRATION"])
     ).first()
 
     if not supplier:
-        logger.warning(f"No approved supplier found for text quotation from: {sender_phone}")
+        logger.warning(f"No supplier found for text quotation from: {sender_phone}")
         return {
             "status": "ignored",
-            "reason": f"No approved supplier matches sender phone: {sender_phone}"
+            "reason": f"No supplier matches sender phone: {sender_phone}"
         }
 
     _ensure_ingest_folder()

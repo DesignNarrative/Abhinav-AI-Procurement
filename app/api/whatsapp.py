@@ -58,6 +58,50 @@ router = APIRouter(
 )
 
 
+def get_or_create_supplier(db: Session, sender_phone: str) -> Supplier:
+    from app.services.whatsapp_service import normalize_phone_number
+    normalized_sender_phone = normalize_phone_number(sender_phone)
+    clean_phone_10 = normalized_sender_phone[-10:]
+
+    supplier = db.query(Supplier).filter(
+        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+        (Supplier.whatsapp_number == normalized_sender_phone)
+    ).first()
+
+    if not supplier:
+        from app.api.supplier import generate_next_supplier_code
+        supplier_code = generate_next_supplier_code(db)
+
+        supplier = Supplier(
+            supplier_code=supplier_code,
+            company_name=f"WhatsApp Contact {sender_phone}",
+            contact_person_name=f"WhatsApp Contact {sender_phone}",
+            whatsapp_number=normalized_sender_phone,
+            registration_status="PENDING_REGISTRATION",
+            declaration_accepted=False,
+            registered_address="Pending Registration",
+            bank_name="Pending Registration",
+            beneficiary_name="Pending Registration",
+            bank_account_number="Pending Registration",
+            bank_ifsc="Pending Registration"
+        )
+        try:
+            db.add(supplier)
+            db.commit()
+            db.refresh(supplier)
+            print(f"[AUTO-REGISTER] Created auto-approved supplier {sender_phone} with code {supplier_code}")
+        except Exception as e:
+            db.rollback()
+            print(f"[AUTO-REGISTER] Failed to auto-register: {e}")
+            supplier = db.query(Supplier).filter(
+                (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                (Supplier.whatsapp_number == normalized_sender_phone)
+            ).first()
+
+    return supplier
+
+
+
 @router.post("/start-registration")
 def start_registration(
     phone_number: str,
@@ -737,10 +781,66 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
         print("---------------------------------")
 
         entry = body["entry"][0]
-
         change = entry["changes"][0]
-
         value = change["value"]
+
+        if "statuses" in value:
+            status_entry = value["statuses"][0]
+            wa_message_id = status_entry.get("id")
+            wa_status = status_entry.get("status")  # sent, delivered, read, failed
+            recipient_phone = status_entry.get("recipient_id")
+
+            # Try to find the original outbound message
+            inbox_msg = db.query(WhatsAppInboxMessage).filter(
+                WhatsAppInboxMessage.whatsapp_message_id == wa_message_id
+            ).first()
+
+            if inbox_msg:
+                # Update delivery status directly for the inbox view
+                inbox_msg.delivery_status = wa_status
+                if wa_status == "failed":
+                    error_reason = "Meta Delivery Failed"
+                    if "errors" in status_entry:
+                        err = status_entry["errors"][0]
+                        code = err.get("code")
+                        title = err.get("title")
+                        if code == 131047 or title == "Re-engagement message":
+                            error_reason = "24h Window Closed (Vendor must message bot first)"
+                        else:
+                            error_reason = f"Failed ({title or 'Meta Error'})"
+                    # Only append once
+                    if "⚠️" not in inbox_msg.message_text:
+                        inbox_msg.message_text = f"⚠️ {inbox_msg.message_text} — {error_reason}. Note: Images must be <5MB and videos <16MB."
+
+                # Update the RFQVendor status if it exists
+                from app.models.rfq_vendor import RFQVendor
+                rv = db.query(RFQVendor).filter(
+                    RFQVendor.vendor_id == inbox_msg.supplier_id
+                ).order_by(RFQVendor.id.desc()).first()
+
+                if rv:
+                    if wa_status == "delivered":
+                        rv.whatsapp_status = "Delivered"
+                    elif wa_status == "read":
+                        rv.whatsapp_status = "Read"
+                    elif wa_status == "failed":
+                        error_msg = "Failed"
+                        if "errors" in status_entry:
+                            err = status_entry["errors"][0]
+                            code = err.get("code")
+                            title = err.get("title")
+                            if code == 131047 or title == "Re-engagement message":
+                                error_msg = "Failed (24h Window Closed - Vendor must message bot first)"
+                            else:
+                                error_msg = f"Failed ({title or 'Meta Error'})"
+                        rv.whatsapp_status = error_msg
+                    
+                db.commit()
+                print(f"[STATUS] Updated message ID {inbox_msg.id} status to {wa_status}.")
+
+            return {
+                "status": "success"
+            }
 
         if "messages" in value:
 
@@ -750,34 +850,35 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
             sender_phone = message["from"]
 
+            # Resolve supplier and check if we should auto-resend failed or template RFQs
+            supplier = get_or_create_supplier(db, sender_phone)
+            if supplier and supplier.registration_status == "APPROVED":
+                from app.models.rfq_vendor import RFQVendor
+                from app.services.rfq_service import RFQService
+                
+                pending_rfqs = db.query(RFQVendor).filter(
+                    RFQVendor.vendor_id == supplier.id,
+                    (RFQVendor.whatsapp_status.like("Failed%") | (RFQVendor.whatsapp_status == "Sent (Template)"))
+                ).all()
+                
+                for prv in pending_rfqs:
+                    print(f"[AUTO-RESEND] Auto-resending RFQ {prv.rfq_id} to supplier {supplier.id} because 24h window opened.")
+                    background_tasks.add_task(
+                        RFQService.resend_rfq_to_specific_vendors,
+                        db,
+                        prv.rfq_id,
+                        [supplier.id]
+                    )
+
             if message.get("type") == "text":
 
-                message_text = message.get(
-                    "text",
-                    {}
-                ).get(
-                    "body",
-                    ""
-                )
+                message_text = message.get("text", {}).get("body", "")
 
-                # Decide whether this text belongs to the registration flow or
-                # is a plain-text quotation from an already-approved supplier.
-                active_conversation = db.query(
-                    SupplierConversation
-                ).filter(
-                    SupplierConversation.phone_number == sender_phone,
-                    SupplierConversation.conversation_status == "IN_PROGRESS"
-                ).first()
+                # Get or create supplier record for this phone number
+                supplier = get_or_create_supplier(db, sender_phone)
+                normalized_sender_phone = supplier.whatsapp_number if supplier else sender_phone
 
-                # Log inbound message to inbox DB (for all numbers - approved or registering)
-                from app.services.whatsapp_service import normalize_phone_number
-                normalized_sender_phone = normalize_phone_number(sender_phone)
-                clean_phone_10 = normalized_sender_phone[-10:]
-                supplier = db.query(Supplier).filter(
-                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == normalized_sender_phone)
-                ).first()
-
+                # ── STEP 1: Always log every inbound message to inbox ──────────
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
@@ -789,64 +890,79 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                     )
                     db.add(inbox_msg)
                     db.commit()
-                    print(f"[INBOX] Logged inbound text from {normalized_sender_phone} successfully.")
+                    print(f"[INBOX] Logged inbound text from {normalized_sender_phone}")
                 except Exception as e:
                     db.rollback()
                     print(f"[INBOX] Failed to log inbound text: {e}")
 
-                incoming = (message_text or "").strip().upper()
-                registration_keywords = ["HI", "HELLO", "HII", "HEY", "HELO", "HAI", "HIYA", "START"]
+                status = supplier.registration_status if supplier else "PENDING_REGISTRATION"
 
-                routed_to_quotation = False
-                bot_should_stay_silent = False
+                # ── STEP 2: Route based on supplier status ─────────────────────
 
-                # Check if sender is an approved supplier first (before checking registration keywords)
-                supplier_approved = db.query(Supplier).filter(
-                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == sender_phone)
-                ).filter(
-                    Supplier.registration_status == "APPROVED"
-                ).first()
+                # ── CASE A: APPROVED supplier ──────────────────────────────────
+                if status == "APPROVED":
+                    # Check if they have an active step-by-step quotation session
+                    from app.services.whatsapp_quotation_service import (
+                        get_active_session,
+                        detect_quote_start,
+                        handle_inbound_quotation_message,
+                    )
+                    active_quot_session = get_active_session(db, normalized_sender_phone)
 
-                if supplier_approved:
-                    text_lower = (message_text or "").lower()
-                    quotation_signals = [
-                        "quotation", "quote", "rate", "price", "amount",
-                        "gst", "\u20b9", "rs", "per ", "qty", "nos"
-                    ]
-                    looks_like_quotation = any(sig in text_lower for sig in quotation_signals)
-
-                    if looks_like_quotation:
-                        from app.services.whatsapp_pipeline_service import process_whatsapp_text_quotation
-                        db_passed_to_background = True
-                        background_tasks.add_task(
-                            process_whatsapp_text_quotation,
-                            db,
-                            sender_phone,
-                            message_text
+                    if active_quot_session or detect_quote_start(message_text):
+                        # Route to step-by-step quotation service
+                        reply = handle_inbound_quotation_message(
+                            db, supplier, normalized_sender_phone, message_text
                         )
-                        send_text_message(
-                            sender_phone,
-                            "We have received your quotation and our AI is processing it. You will receive a confirmation shortly."
-                        )
-                        routed_to_quotation = True
+                        if reply:
+                            send_text_message(normalized_sender_phone, reply)
                     else:
-                        # Approved supplier sending a casual text — not a quotation.
-                        # Bot stays silent; PM replies manually from the dashboard inbox.
-                        print(f"[INBOX] Casual message from approved supplier {sender_phone}: {message_text[:80]}")
-                        bot_should_stay_silent = True
+                        # Casual / professional / any other message from APPROVED supplier
+                        # Bot stays COMPLETELY SILENT — PM replies manually from inbox
+                        print(f"[INBOX] Approved supplier {normalized_sender_phone} sent: {message_text[:80]} — bot silent")
 
-                if not routed_to_quotation and not bot_should_stay_silent:
+                # ── CASE B: REJECTED supplier ──────────────────────────────────
+                elif status == "REJECTED":
+                    rejection_reply = (
+                        "Hello! 🙏\n\n"
+                        "Unfortunately your supplier registration with Abhinav Group "
+                        "was not approved at this time.\n\n"
+                        "Please contact our purchase department directly for further "
+                        "assistance.\n\n"
+                        "📞 Thank you for your interest. We appreciate your time."
+                    )
+                    send_text_message(normalized_sender_phone, rejection_reply)
+                    print(f"[BOT] Sent rejection message to {normalized_sender_phone}")
+
+                # ── CASE C: PENDING (submitted, awaiting PM review) ────────────
+                elif status == "PENDING":
+                    pending_reply = (
+                        f"Hello! 🙏\n\n"
+                        f"Your registration for *{supplier.company_name}* is currently "
+                        f"under review by our purchase manager.\n\n"
+                        f"We will notify you once a decision has been made. "
+                        f"Thank you for your patience! ⏳"
+                    )
+                    send_text_message(normalized_sender_phone, pending_reply)
+                    print(f"[BOT] Sent pending-review message to {normalized_sender_phone}")
+
+                # ── CASE D: PENDING_REGISTRATION (new or deleted supplier) ─────
+                else:
+                    # Check for active registration conversation
+                    active_reg_conv = db.query(SupplierConversation).filter(
+                        SupplierConversation.phone_number == sender_phone,
+                        SupplierConversation.conversation_status == "IN_PROGRESS"
+                    ).first()
+
+                    # Route to registration bot
                     response = process_whatsapp_message(
                         sender_phone,
                         message_text,
                         db
                     )
-
-                    send_text_message(
-                        sender_phone,
-                        response["reply"]
-                    )
+                    bot_reply = response.get("reply", "")
+                    if bot_reply:
+                        send_text_message(sender_phone, bot_reply)
 
             elif message.get("type") == "document":
 
@@ -855,29 +971,30 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 document = message["document"]
                 filename = document.get("filename", "document.pdf")
 
-                # Log inbound document to inbox DB
-                from app.services.whatsapp_service import normalize_phone_number
-                normalized_sender_phone = normalize_phone_number(sender_phone)
+                # Get or auto-create approved supplier
+                supplier = get_or_create_supplier(db, sender_phone)
+                normalized_sender_phone = supplier.whatsapp_number
                 clean_phone_10 = normalized_sender_phone[-10:]
-                supplier = db.query(Supplier).filter(
-                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == normalized_sender_phone)
-                ).first()
 
                 # Download document to uploads/media directory for inbox rendering
                 media_local_path = "uploads/media"
-                file_path = download_media(document["id"], media_local_path, original_filename=filename)
-                filename_only = os.path.basename(file_path)
+                file_path = None
+                filename_only = None
+                try:
+                    file_path = download_media(document["id"], media_local_path, original_filename=filename)
+                    filename_only = os.path.basename(file_path) if file_path else None
+                except Exception as e:
+                    print(f"[WHATSAPP] Failed to download inbound document: {e}")
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
                         supplier_phone=normalized_sender_phone,
-                        message_text=f"Received document: {filename}",
+                        message_text=f"Received document: {filename}" if file_path else f"Received document: {filename} (download failed)",
                         direction="inbound",
                         is_read=False,
-                        media_type="document",
-                        media_path=f"uploads/media/{filename_only}"
+                        media_type="document" if file_path else "text",
+                        media_path=f"uploads/media/{filename_only}" if file_path else None
                     )
                     db.add(inbox_msg)
                     db.commit()
@@ -896,17 +1013,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 ).first()
 
                 if not conversation:
-                    # Check if sender is an approved supplier
-                    clean_phone = sender_phone.replace("+", "").strip()
-                    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
-                    supplier = db.query(Supplier).filter(
-                        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                        (Supplier.whatsapp_number == sender_phone)
-                    ).filter(
-                        Supplier.registration_status == "APPROVED"
-                    ).first()
-
-                    if supplier:
+                    if supplier and supplier.registration_status in ("APPROVED", "PENDING_REGISTRATION") and file_path:
                         # The file is already in uploads/media/ for inbox display.
                         # Copy it to uploads/quotation_documents/ so the pipeline can
                         # ingest, extract text, and classify it independently.
@@ -929,10 +1036,13 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                         # NOTE: No immediate send_text_message here.
                         # The pipeline sends receipt ONLY if classified as QUOTATION/INVOICE.
                     else:
-                        send_text_message(
-                            sender_phone,
-                            "No active registration found."
-                        )
+                        if not file_path:
+                            print("[WHATSAPP] Skipped document pipeline since download failed.")
+                        else:
+                            send_text_message(
+                                sender_phone,
+                                "No active registration found. Please register first."
+                            )
 
                     return {
                         "status": "success"
@@ -982,29 +1092,30 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                 image = message["image"]
 
-                # Log inbound image to inbox DB
-                from app.services.whatsapp_service import normalize_phone_number
-                normalized_sender_phone = normalize_phone_number(sender_phone)
+                # Get or auto-create approved supplier
+                supplier = get_or_create_supplier(db, sender_phone)
+                normalized_sender_phone = supplier.whatsapp_number
                 clean_phone_10 = normalized_sender_phone[-10:]
-                supplier = db.query(Supplier).filter(
-                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == normalized_sender_phone)
-                ).first()
 
                 # Download image to uploads/media directory for inbox rendering
                 media_local_path = "uploads/media"
-                file_path = download_media(image["id"], media_local_path, original_filename="image.jpg")
-                filename_only = os.path.basename(file_path)
+                file_path = None
+                filename_only = None
+                try:
+                    file_path = download_media(image["id"], media_local_path, original_filename="image.jpg")
+                    filename_only = os.path.basename(file_path) if file_path else None
+                except Exception as e:
+                    print(f"[WHATSAPP] Failed to download inbound image: {e}")
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
                         supplier_phone=normalized_sender_phone,
-                        message_text="Received photo",
+                        message_text="Received photo" if file_path else "Received photo (download failed)",
                         direction="inbound",
                         is_read=False,
-                        media_type="image",
-                        media_path=f"uploads/media/{filename_only}"
+                        media_type="image" if file_path else "text",
+                        media_path=f"uploads/media/{filename_only}" if file_path else None
                     )
                     db.add(inbox_msg)
                     db.commit()
@@ -1021,17 +1132,7 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 ).first()
 
                 if not conversation:
-                    # Check if sender is an approved supplier
-                    clean_phone = sender_phone.replace("+", "").strip()
-                    clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
-                    supplier = db.query(Supplier).filter(
-                        (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                        (Supplier.whatsapp_number == sender_phone)
-                    ).filter(
-                        Supplier.registration_status == "APPROVED"
-                    ).first()
-
-                    if supplier:
+                    if supplier and supplier.registration_status in ("APPROVED", "PENDING_REGISTRATION"):
                         # The file is already in uploads/media/ for inbox display.
                         # Copy it to uploads/quotation_documents/ so the pipeline can
                         # ingest, extract text (or Vision OCR), and classify it independently.
@@ -1096,28 +1197,30 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
                 print("VIDEO RECEIVED")
                 video = message["video"]
 
-                from app.services.whatsapp_service import normalize_phone_number
-                normalized_sender_phone = normalize_phone_number(sender_phone)
+                # Get or auto-create approved supplier
+                supplier = get_or_create_supplier(db, sender_phone)
+                normalized_sender_phone = supplier.whatsapp_number
                 clean_phone_10 = normalized_sender_phone[-10:]
-                supplier = db.query(Supplier).filter(
-                    (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
-                    (Supplier.whatsapp_number == normalized_sender_phone)
-                ).first()
 
                 # Download video to uploads/media directory for inbox rendering
                 media_local_path = "uploads/media"
-                file_path = download_media(video["id"], media_local_path, original_filename="video.mp4")
-                filename_only = os.path.basename(file_path)
+                file_path = None
+                filename_only = None
+                try:
+                    file_path = download_media(video["id"], media_local_path, original_filename="video.mp4")
+                    filename_only = os.path.basename(file_path) if file_path else None
+                except Exception as e:
+                    print(f"[WHATSAPP] Failed to download inbound video: {e}")
 
                 try:
                     inbox_msg = WhatsAppInboxMessage(
                         supplier_id=supplier.id if supplier else None,
                         supplier_phone=normalized_sender_phone,
-                        message_text="Received video",
+                        message_text="Received video" if file_path else "Received video (download failed)",
                         direction="inbound",
                         is_read=False,
-                        media_type="video",
-                        media_path=f"uploads/media/{filename_only}"
+                        media_type="video" if file_path else "text",
+                        media_path=f"uploads/media/{filename_only}" if file_path else None
                     )
                     db.add(inbox_msg)
                     db.commit()
@@ -1128,6 +1231,49 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
 
                 # Videos cannot be quotations — logged in inbox, PM handles from dashboard.
                 print(f"[INBOX] Video from {normalized_sender_phone} — bot stays silent, PM will reply from inbox.")
+
+            else:
+                # Fallback for other media types (audio, voice, sticker, etc.)
+                media_type = message.get("type")
+                if media_type in message:
+                    media_obj = message[media_type]
+                    media_id = media_obj.get("id")
+
+                    if media_id:
+                        supplier = get_or_create_supplier(db, sender_phone)
+                        normalized_sender_phone = supplier.whatsapp_number
+
+                        media_local_path = "uploads/media"
+                        file_path = None
+                        filename_only = None
+                        mime_type = media_obj.get("mime_type", "")
+                        ext = ""
+                        if "/" in mime_type:
+                            ext = "." + mime_type.split("/")[1].split(";")[0]
+
+                        filename = f"media_{media_id}{ext}"
+                        try:
+                            file_path = download_media(media_id, media_local_path, original_filename=filename)
+                            filename_only = os.path.basename(file_path) if file_path else None
+                        except Exception as e:
+                            print(f"[WHATSAPP] Failed to download inbound fallback media ({media_type}): {e}")
+
+                        try:
+                            inbox_msg = WhatsAppInboxMessage(
+                                supplier_id=supplier.id if supplier else None,
+                                supplier_phone=normalized_sender_phone,
+                                message_text=f"Received attachment ({media_type})" if file_path else f"Received attachment ({media_type}) (download failed)",
+                                direction="inbound",
+                                is_read=False,
+                                media_type="document" if file_path and media_type not in ("image", "video") else ("video" if media_type == "video" else ("image" if media_type == "image" else "text")),
+                                media_path=f"uploads/media/{filename_only}" if file_path else None
+                            )
+                            db.add(inbox_msg)
+                            db.commit()
+                            print(f"[INBOX] Logged inbound media ({media_type}) from {normalized_sender_phone} successfully.")
+                        except Exception as e:
+                            db.rollback()
+                            print(f"[INBOX] Failed to log inbound media ({media_type}): {e}")
 
         return {
             "status": "success"
@@ -1148,3 +1294,4 @@ async def handle_inbound_webhook(request: Request, background_tasks: BackgroundT
     finally:
         if not db_passed_to_background:
             db.close()
+

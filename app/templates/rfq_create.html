@@ -115,8 +115,13 @@
                     {% for vendor in vendors %}
                     <div class="col-md-4 vendor-card"
                          data-name="{{ vendor.company_name|lower }}"
-                         data-category="{{ (vendor.supplier_category or '')|lower }}">
-                        <label class="d-flex align-items-start gap-2 p-2 border rounded-3 cursor-pointer w-100 vendor-label">
+                         data-category="{{ ((vendor.supplier_category or '') + ',' + (vendor.material_types or '') + ',' + (vendor.principal_business or ''))|lower }}"
+                         data-id="{{ vendor.id }}"
+                         data-phone="{{ vendor.whatsapp_number }}"
+                         data-company="{{ vendor.company_name }}"
+                         data-cat-display="{{ vendor.supplier_category or 'General' }}"
+                         data-wa="{{ vendor.whatsapp_number }}"
+                         ><label class="d-flex align-items-start gap-2 p-2 border rounded-3 cursor-pointer w-100 vendor-label">
                             <input type="checkbox" class="vendor-checkbox form-check-input mt-1 flex-shrink-0"
                                    value="{{ vendor.id }}" id="vendor_{{ vendor.id }}">
                             <div>
@@ -146,11 +151,11 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Site Contact Person</label>
-                        <input type="text" class="form-control" id="contact_person" placeholder="e.g. Mr. Pandhare">
+                        <input type="text" class="form-control" id="contact_person" placeholder="e.g. Mr. Avdhut Chakradhar">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Site Contact Number</label>
-                        <input type="text" class="form-control" id="contact_number" placeholder="e.g. 9876543210">
+                        <input type="text" class="form-control" id="contact_number" placeholder="e.g. 7219550051">
                     </div>
                 </div>
             </div>

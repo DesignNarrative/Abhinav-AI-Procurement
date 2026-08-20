@@ -90,6 +90,12 @@ class WhatsAppInboxMessage(Base):
         nullable=True
     )
 
+    delivery_status = Column(
+        String(50),
+        nullable=True,
+        default="sent"
+    )
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now()

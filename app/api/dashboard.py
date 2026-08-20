@@ -8,6 +8,15 @@ from app.services.supplier_service import SupplierService
 from app.services.excel_service import ExcelService
 from app.models.supplier import Supplier
 
+# Import all related models so SQLAlchemy mapper resolves correctly
+from app.models.rfq import RFQ
+from app.models.rfq_item import RFQItem
+from app.models.rfq_vendor import RFQVendor
+from app.models.quotation import Quotation
+from app.models.quotation_item import QuotationItem
+from app.models.purchase_order import PurchaseOrder
+from app.models.requirement import Requirement
+
 router = APIRouter(
     prefix="/dashboard",
     tags=["Dashboard"]
@@ -26,15 +35,39 @@ def dashboard(
     request: Request,
     db: Session = Depends(get_db)
 ):
-
     stats = SupplierService.get_dashboard_stats(db)
+
+    # Procurement stats
+    total_reqs = db.query(Requirement).count()
+    active_reqs = db.query(Requirement).filter(
+        Requirement.status.notin_(["COMPLETED", "CANCELLED"])
+    ).count()
+    open_rfqs = db.query(RFQ).filter(
+        RFQ.status.notin_(["Closed", "Cancelled"])
+    ).count()
+    total_quotations = db.query(Quotation).count()
+    active_pos = db.query(PurchaseOrder).filter(
+        PurchaseOrder.status.notin_(["Delivered", "Cancelled"])
+    ).count()
+
+    recent_reqs = db.query(Requirement).order_by(Requirement.id.desc()).limit(5).all()
+    recent_rfqs = db.query(RFQ).order_by(RFQ.id.desc()).limit(5).all()
 
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "request": request,
-            "stats": stats
+            "stats": stats,
+            "procurement": {
+                "total_reqs": total_reqs,
+                "active_reqs": active_reqs,
+                "open_rfqs": open_rfqs,
+                "total_quotations": total_quotations,
+                "active_pos": active_pos,
+            },
+            "recent_reqs": recent_reqs,
+            "recent_rfqs": recent_rfqs,
         }
     )
 
@@ -55,7 +88,7 @@ def supplier_management(
     category: str = ""
 ):
 
-    query = db.query(Supplier)
+    query = db.query(Supplier).filter(Supplier.registration_status != "PENDING_REGISTRATION")
 
     if search:
         query = query.filter(
@@ -76,15 +109,14 @@ def supplier_management(
         Supplier.created_at.desc()
     ).all()
 
-    # Dynamic extraction of all unique categories present in the database
-    all_suppliers = db.query(Supplier).all()
+    # Build unique category list by extracting from BOTH principal_business AND material_types
+    # for every supplier — identical to registration logic so nothing is ever missed.
+    from app.services.supplier_mapper import extract_categories
+    all_suppliers = db.query(Supplier).filter(Supplier.registration_status != "PENDING_REGISTRATION").all()
     categories_set = set()
     for s in all_suppliers:
-        if s.supplier_category:
-            for cat in s.supplier_category.split(","):
-                cat = cat.strip()
-                if cat:
-                    categories_set.add(cat)
+        cats = extract_categories(s.principal_business, s.material_types)
+        categories_set.update(cats)
     categories = sorted(list(categories_set))
 
     return templates.TemplateResponse(

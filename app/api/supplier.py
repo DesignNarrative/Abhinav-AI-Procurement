@@ -20,10 +20,28 @@ router = APIRouter(
     tags=["Suppliers"]
 )
 
+def generate_next_supplier_code(db: Session) -> str:
+    try:
+        next_val = db.execute(text("SELECT nextval('supplier_code_seq')")).scalar()
+        return f"VEND{next_val:06d}"
+    except Exception:
+        try:
+            max_code_row = db.execute(text(
+                "SELECT max(supplier_code) FROM suppliers WHERE supplier_code LIKE 'VEND%'"
+            )).scalar()
+            if max_code_row:
+                num_part = max_code_row.replace("VEND", "")
+                next_val = int(num_part) + 1
+            else:
+                next_val = 1
+            return f"VEND{next_val:06d}"
+        except Exception:
+            return "VEND000001"
+
 
 @router.get("/")
 def get_suppliers(db: Session = Depends(get_db)):
-    return db.query(Supplier).all()
+    return db.query(Supplier).filter(Supplier.registration_status != "PENDING_REGISTRATION").all()
 
 
 @router.get(
@@ -343,13 +361,7 @@ def register_supplier_manual(
                 detail="GST Number already registered"
             )
 
-    try:
-        # Generate vendor code
-        next_val = db.execute(text("SELECT nextval('supplier_code_seq')")).scalar()
-        supplier_code = f"VEND{next_val:06d}"
-    except Exception as e:
-        # Fallback if sequence is missing in sqlite/testing setups
-        supplier_code = None
+    supplier_code = generate_next_supplier_code(db)
 
     from app.services.supplier_mapper import extract_categories
     cats = extract_categories(supplier.principal_business, supplier.material_types)
@@ -357,19 +369,19 @@ def register_supplier_manual(
 
     new_supplier = Supplier(
         supplier_code=supplier_code,
-        company_name=supplier.company_name,
+        company_name=supplier.company_name or "Unnamed Supplier",
         principal_business=supplier.principal_business,
         gst_number=supplier.gst_number,
-        registered_address=supplier.registered_address,
-        contact_person_name=supplier.contact_person_name,
+        registered_address=supplier.registered_address or "Pending Registration",
+        contact_person_name=supplier.contact_person_name or supplier.company_name or "Pending Registration",
         contact_person_email=supplier.contact_person_email,
-        whatsapp_number=supplier.whatsapp_number,
+        whatsapp_number=supplier.whatsapp_number or "0000000000",
         supplier_category=supplier_category,
         material_types=supplier.material_types,
-        bank_name=supplier.bank_name,
-        beneficiary_name=supplier.beneficiary_name,
-        bank_account_number=supplier.bank_account_number,
-        bank_ifsc=supplier.bank_ifsc,
+        bank_name=supplier.bank_name or "Pending Registration",
+        beneficiary_name=supplier.beneficiary_name or "Pending Registration",
+        bank_account_number=supplier.bank_account_number or "Pending Registration",
+        bank_ifsc=supplier.bank_ifsc or "Pending Registration",
         branch_name=supplier.branch_name,
         is_msme=supplier.is_msme,
         msme_number=supplier.msme_number,
@@ -408,8 +420,17 @@ def update_supplier(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Apply all non-category fields first
     for field, value in update_data.items():
-        setattr(supplier, field, value)
+        if field != "supplier_category":          # category is always auto-computed below
+            setattr(supplier, field, value)
+
+    # ── Always auto-recalculate supplier_category from the two answer fields ──
+    # This mirrors the logic used at registration time (WhatsApp bot & manual creation).
+    # One supplier can appear in multiple categories (comma-separated string).
+    from app.services.supplier_mapper import extract_categories
+    cats = extract_categories(supplier.principal_business, supplier.material_types)
+    supplier.supplier_category = ", ".join(cats) if cats else None
 
     db.commit()
     db.refresh(supplier)
@@ -417,6 +438,7 @@ def update_supplier(
     return {
         "message": "Supplier updated successfully",
         "supplier_id": supplier.id,
+        "supplier_category": supplier.supplier_category,
         "updated_fields": list(update_data.keys())
     }
 
@@ -496,5 +518,55 @@ def reject_supplier(
         "supplier_id": supplier.id,
         "status": supplier.registration_status
     }
+
+
+@router.delete("/{supplier_id}")
+def delete_supplier(
+    supplier_id: int,
+    db: Session = Depends(get_db)
+):
+    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not supplier:
+        raise HTTPException(
+            status_code=404,
+            detail="Supplier not found"
+        )
+    try:
+        from sqlalchemy import text
+        # Delete related child records first to satisfy foreign key constraints
+        db.execute(text("DELETE FROM rfq_vendors WHERE vendor_id = :id"), {"id": supplier_id})
+        db.execute(text("DELETE FROM whatsapp_inbox_messages WHERE supplier_id = :id"), {"id": supplier_id})
+        db.execute(text("DELETE FROM supplier_references WHERE supplier_id = :id"), {"id": supplier_id})
+        db.execute(text("DELETE FROM negotiations WHERE vendor_id = :id"), {"id": supplier_id})
+        db.execute(text("DELETE FROM reminders_log WHERE vendor_id = :id"), {"id": supplier_id})
+
+        # Delete registration and quotation conversation history so fresh registration starts on next message
+        db.execute(text("DELETE FROM supplier_conversations WHERE phone_number = :phone"), {"phone": supplier.whatsapp_number})
+        db.execute(text("DELETE FROM supplier_quotation_conversations WHERE phone_number = :phone"), {"phone": supplier.whatsapp_number})
+
+        # Nullify or delete quotations/invoices
+        db.execute(text("DELETE FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE vendor_id = :id)"), {"id": supplier_id})
+        db.execute(text("DELETE FROM quotations WHERE vendor_id = :id"), {"id": supplier_id})
+
+        db.execute(text("DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE vendor_id = :id)"), {"id": supplier_id})
+        db.execute(text("DELETE FROM invoices WHERE vendor_id = :id"), {"id": supplier_id})
+
+        # Nullify ingestion logs
+        db.execute(text("UPDATE document_ingestion_logs SET supplier_id = NULL WHERE supplier_id = :id"), {"id": supplier_id})
+
+        # Finally delete supplier
+        db.delete(supplier)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete supplier due to database constraints: {str(e)}"
+        )
+    return {
+        "message": "Supplier Deleted Successfully",
+        "supplier_id": supplier_id
+    }
+
 
     

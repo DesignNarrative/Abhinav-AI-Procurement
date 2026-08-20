@@ -120,6 +120,8 @@
                 </div>
             </div>
 
+
+
             <!-- Commercial Summary -->
             <div class="card border-0 shadow-sm rounded-4 mb-4">
                 <div class="card-header bg-white py-3">
@@ -130,27 +132,35 @@
                 <div class="card-body">
                     {% set cm = extraction_payload.get("commercial_metadata") or {} %}
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="text-muted small">Payment Terms</div>
-                            <div class="fw-semibold">{{ (cm.get("payment_terms") or {}).get("value") or "—" }}</div>
+                            {% if draft_quotation and draft_quotation.status == "Draft" %}
+                            <input type="text" class="form-control form-control-sm mt-1" id="edit_payment_terms" 
+                                   value="{{ draft_quotation.payment_terms or '' }}" placeholder="e.g. Immediate Against Delivery">
+                            {% else %}
+                            <div class="fw-semibold mt-1">{{ draft_quotation.payment_terms if draft_quotation else (cm.get("payment_terms") or {}).get("value") or "—" }}</div>
+                            {% endif %}
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-muted small">Delivery Terms</div>
-                            <div>{{ (cm.get("delivery_terms") or {}).get("value") or "—" }}</div>
+                        <div class="col-md-4">
+                            <div class="text-muted small">Delivery Timeline / Terms</div>
+                            {% if draft_quotation and draft_quotation.status == "Draft" %}
+                            <input type="text" class="form-control form-control-sm mt-1" id="edit_delivery_timeline" 
+                                   value="{{ draft_quotation.delivery_timeline or '' }}" placeholder="e.g. 2 Days, Ex-Works">
+                            {% else %}
+                            <div class="mt-1">{{ draft_quotation.delivery_timeline if draft_quotation else (cm.get("delivery_terms") or {}).get("value") or "—" }}</div>
+                            {% endif %}
                         </div>
-                        <div class="col-md-3">
-                            <div class="text-muted small">Total Tax Amount</div>
-                            <div class="fw-semibold">
-                                {% set tax = (cm.get("total_tax_amount") or {}).get("value") %}
-                                {{ "₹{:,.2f}".format(tax) if tax else "—" }}
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="text-muted small">Grand Total</div>
-                            <div class="fw-bold text-primary fs-5">
-                                {% set gt = (cm.get("grand_total_amount") or {}).get("value") %}
+                        <div class="col-md-4">
+                            <div class="text-muted small">Grand Total (₹)</div>
+                            {% if draft_quotation and draft_quotation.status == "Draft" %}
+                            <input type="number" step="any" class="form-control form-control-sm fw-bold text-primary mt-1" id="edit_grand_total" 
+                                   value="{{ draft_quotation.grand_total or 0.0 }}">
+                            {% else %}
+                            <div class="fw-bold text-primary fs-5 mt-1">
+                                {% set gt = draft_quotation.grand_total if draft_quotation else (cm.get("grand_total_amount") or {}).get("value") %}
                                 {{ "₹{:,.2f}".format(gt) if gt else "—" }}
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -161,12 +171,76 @@
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                     <h5 class="fw-bold mb-0">
                         <i class="bi bi-list-ol text-primary me-2"></i>Line Items
-                        <span class="badge bg-light text-dark border ms-2">
-                            {{ extraction_payload.get("line_items", []) | length }}
+                        <span class="badge bg-light text-dark border ms-2" id="itemsCountBadge">
+                            {{ draft_items | length if draft_quotation else (extraction_payload.get("line_items", []) | length) }}
                         </span>
                     </h5>
                 </div>
                 <div class="card-body p-0">
+                    {% if draft_quotation %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3" style="width: 50px;">#</th>
+                                    <th>Material Name</th>
+                                    <th>Brand Offered</th>
+                                    <th class="text-end" style="width: 120px;">Qty</th>
+                                    <th class="text-end" style="width: 120px;">Rate (₹)</th>
+                                    <th class="text-end" style="width: 100px;">Tax (%)</th>
+                                    <th class="text-end" style="width: 140px; padding-right: 15px;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in draft_items %}
+                                <tr class="item-row" data-item-id="{{ item.q_item.id }}">
+                                    <td class="ps-3 text-muted">{{ loop.index }}</td>
+                                    <td>
+                                        <div class="fw-semibold">{{ item.rfq_item.material_name }}</div>
+                                        <div class="text-muted small">{{ item.rfq_item.material_category }} ({{ item.rfq_item.unit }})</div>
+                                    </td>
+                                    <td>
+                                        {% if draft_quotation.status == "Draft" %}
+                                        <input type="text" class="form-control form-control-sm item-brand" 
+                                               value="{{ item.q_item.brand_offered or '' }}" placeholder="Brand">
+                                        {% else %}
+                                        <div>{{ item.q_item.brand_offered or '—' }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if draft_quotation.status == "Draft" %}
+                                        <input type="number" step="any" class="form-control form-control-sm text-end item-qty" 
+                                               value="{{ item.q_item.quoted_quantity or 0.0 }}" oninput="recalculateRow(this)">
+                                        {% else %}
+                                        <div>{{ item.q_item.quoted_quantity or '0.0' }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if draft_quotation.status == "Draft" %}
+                                        <input type="number" step="any" class="form-control form-control-sm text-end item-rate" 
+                                               value="{{ item.q_item.basic_rate or 0.0 }}" oninput="recalculateRow(this)">
+                                        {% else %}
+                                        <div>₹{{ "{:,.2f}".format(item.q_item.basic_rate) }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if draft_quotation.status == "Draft" %}
+                                        <input type="number" step="any" class="form-control form-control-sm text-end item-tax" 
+                                               value="{{ item.q_item.tax_percent or 0.0 }}" oninput="recalculateRow(this)">
+                                        {% else %}
+                                        <div>{{ item.q_item.tax_percent or '0' }}%</div>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end fw-semibold pe-3" style="padding-right: 15px;">
+                                        <span class="row-total-display">₹{{ "{:,.2f}".format(item.q_item.total_item_amount) }}</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <!-- Ingested Static payload layout (No draft yet) -->
                     {% set items = extraction_payload.get("line_items") or [] %}
                     {% if items %}
                     <div class="table-responsive">
@@ -224,6 +298,7 @@
                     </div>
                     {% else %}
                     <div class="text-center py-4 text-muted">No line items extracted.</div>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -489,15 +564,76 @@ function showAlert(message, type) {
     alertEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+function recalculateRow(inputEl) {
+    const row = inputEl.closest('.item-row');
+    if (!row) return;
+    const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+    const rate = parseFloat(row.querySelector('.item-rate').value) || 0;
+    const tax = parseFloat(row.querySelector('.item-tax').value) || 0;
+
+    const landed = rate * (1 + tax / 100);
+    const total = qty * landed;
+
+    row.querySelector('.row-total-display').textContent = '₹' + total.toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+
+    recalculateGrandTotal();
+}
+
+function recalculateGrandTotal() {
+    let grand = 0;
+    document.querySelectorAll('.item-row').forEach(row => {
+        const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
+        const rate = parseFloat(row.querySelector('.item-rate').value) || 0;
+        const tax = parseFloat(row.querySelector('.item-tax').value) || 0;
+        const landed = rate * (1 + tax / 100);
+        grand += qty * landed;
+    });
+    const gtInput = document.getElementById('edit_grand_total');
+    if (gtInput) {
+        gtInput.value = grand.toFixed(2);
+    }
+}
+
 async function approveDocument() {
     const btn = document.getElementById("approveBtn");
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Approving…';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving & Approving…';
+
+    const items = [];
+    document.querySelectorAll('.item-row').forEach(row => {
+        const itemId = parseInt(row.dataset.itemId);
+        const brand = row.querySelector('.item-brand') ? row.querySelector('.item-brand').value.trim() : null;
+        const qty = row.querySelector('.item-qty') ? parseFloat(row.querySelector('.item-qty').value) || 0 : null;
+        const rate = row.querySelector('.item-rate') ? parseFloat(row.querySelector('.item-rate').value) || 0 : null;
+        const tax = row.querySelector('.item-tax') ? parseFloat(row.querySelector('.item-tax').value) || 0 : null;
+        items.push({
+            id: itemId,
+            brand_offered: brand,
+            quoted_quantity: qty,
+            basic_rate: rate,
+            tax_percent: tax
+        });
+    });
+
+    const paymentTerms = document.getElementById('edit_payment_terms') ? document.getElementById('edit_payment_terms').value.trim() : null;
+    const deliveryTimeline = document.getElementById('edit_delivery_timeline') ? document.getElementById('edit_delivery_timeline').value.trim() : null;
+    const grandTotal = document.getElementById('edit_grand_total') ? parseFloat(document.getElementById('edit_grand_total').value) || 0 : null;
+
+    const payload = {
+        payment_terms: paymentTerms,
+        delivery_timeline: deliveryTimeline,
+        grand_total: grandTotal,
+        items: items
+    };
 
     try {
         const response = await fetch(`/document-intelligence/${DOCUMENT_UUID}/approve`, {
             method: "PATCH",
-            headers: { "Content-Type": "application/json" }
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
         });
         const data = await response.json();
 
@@ -508,6 +644,7 @@ async function approveDocument() {
             btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Approved';
             const rejectBtn = document.getElementById("rejectBtn");
             if (rejectBtn) rejectBtn.disabled = true;
+            setTimeout(() => window.location.reload(), 800);
         } else {
             showAlert(`<i class="bi bi-exclamation-triangle me-2"></i><strong>Error:</strong> ${data.detail || "Approval failed."}`, "danger");
             btn.disabled = false;

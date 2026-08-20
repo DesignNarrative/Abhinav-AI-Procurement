@@ -1,4 +1,4 @@
-"""
+﻿"""
 RFQ WhatsApp Message Generator.
 
 This module is completely dynamic. It does NOT have any hardcoded material types.
@@ -36,87 +36,161 @@ def generate_rfq_whatsapp_message(
     purpose: Optional[str] = None,
 ) -> str:
     """
-    Generates a professional, intelligent WhatsApp RFQ message.
-
-    Rules:
-    1. Only includes fields that have a value — no empty lines.
-    2. Works for any material type worldwide — no hardcoded categories.
-    3. The dynamic_fields dict keys are auto-converted to readable labels.
-    4. Multi-item RFQs are properly numbered.
+    Generates a short, human-sounding WhatsApp RFQ message.
     """
-
     lines = []
 
-    # ── Header ──
-    lines.append(f"*REQUEST FOR QUOTATION*")
-    lines.append(f"*RFQ No:* {rfq_number}")
+    lines.append("Hello! 👋")
+    lines.append("")
+    
+    lines.append("We are *Abhinav Group* (Real estate builders & construction company in Pune).")
+    lines.append("We are Looking for rates/availability of these materials for our project:")
     lines.append("")
 
-    # ── Project Info ──
-    lines.append(f"*Project:* {project_name}")
-    if site_name:
-        lines.append(f"*Site:* {site_name}")
-    lines.append(f"*Delivery Location:* {delivery_location}")
-    if priority:
-        lines.append(f"*Priority:* {priority}")
-    if required_date:
-        lines.append(f"*Required By:* {required_date}")
-    if purpose:
-        lines.append(f"*Purpose:* {purpose}")
-    lines.append("")
-
-    # ── Items ──
     lines.append("*Materials Required:*")
-    lines.append("-" * 32)
-
-    for i, item in enumerate(items, start=1):
-        lines.append(f"*Item {i}: {item.get('material_name', 'N/A')}*")
-        lines.append(f"  • Category: {item.get('material_category', '-')}")
-        lines.append(f"  • Quantity: {item.get('quantity', '-')} {item.get('unit', '')}")
-
-        if item.get("brand_required"):
-            lines.append(f"  • Brand: {item['brand_required']}")
-
-        # Dynamic fields — works for any material type
+    for item in items:
+        brand_info = f" (Brand: {item['brand_required']})" if item.get("brand_required") else ""
+        lines.append(f"📦 {item.get('material_name', 'N/A')} — {item.get('quantity', '-')} {item.get('unit', '')}{brand_info}")
+        
+        # Dynamic fields (e.g. specifications)
         dynamic = item.get("dynamic_fields") or {}
         for key, value in dynamic.items():
             if value is not None and str(value).strip() not in ("", "None"):
                 lines.append(f"  • {_label(key)}: {value}")
-
+        
         if item.get("remarks"):
             lines.append(f"  • Note: {item['remarks']}")
 
-        lines.append("")
-
-    lines.append("-" * 32)
-
-    # ── Terms ──
-    terms_added = False
-    if payment_terms:
-        lines.append(f"*Payment Terms:* {payment_terms}")
-        terms_added = True
-    if terms_added:
-        lines.append("")
-
-    # ── Contact ──
-    if contact_person or contact_number:
-        lines.append("*Site Contact:*")
-        if contact_person:
-            lines.append(f"  {contact_person}")
-        if contact_number:
-            lines.append(f"  Tel: {contact_number}")
-        lines.append("")
-
-    # ── Deadline ──
-    if deadline:
-        lines.append(f"*Quotation Deadline:* {deadline}")
-        lines.append("")
-
-    # ── Footer ──
-    lines.append("Please share your best rate.")
-    lines.append("Mention GST separately.")
-    lines.append("Include transport and loading/unloading details.")
     lines.append("")
-    lines.append("*Abhinav Group — Purchase Department*")
+    lines.append(f"📍 Delivery: {delivery_location}")
+    
+    if required_date:
+        lines.append(f"📅 Required By: {required_date}")
+        
+    if deadline:
+        lines.append(f"📅 Quotation Deadline: {deadline}")
+        
+    if purpose:
+        lines.append(f"🎯 Purpose: {purpose}")
+    
+    if payment_terms:
+        lines.append(f"💳 Payment Terms: {payment_terms}")
+        
+    lines.append("")
+    lines.append("Please reply in this chat with your best rate (mention GST separately) and delivery timeline.")
+    lines.append("")
+    lines.append("Thanks,")
+    lines.append("*Abhinav Group — Purchase Team*")
+    
+    # Defaults
+    if not contact_person:
+        contact_person = "Mr. Avdhut Chakradhar"
+    if not contact_number:
+        contact_number = "7219550051"
+        
+    contact_info = []
+    if contact_person:
+        contact_info.append(contact_person)
+    if contact_number:
+        contact_info.append(contact_number)
+    if contact_info:
+        lines.append(f"📞 {' / '.join(contact_info)}")
 
     return "\n".join(lines)
+
+
+def generate_quotation_trigger_message(rfq_number: str) -> str:
+    """
+    Short trigger message sent right after the RFQ message.
+    Tells the supplier how to start the quotation process.
+    """
+    return (
+        f"📝 Got the RFQ?\n\n"
+        f"To send your quotation for *{rfq_number}*, type:\n"
+        f"*QUOTE*\n\n"
+        f"We will guide you step by step. 👍"
+    )
+
+
+def send_award_winner_message(supplier, rfq, po=None) -> bool:
+    """
+    Send congratulatory WhatsApp message to the winning supplier.
+    Returns True if sent successfully.
+    """
+    from app.services.whatsapp_service import send_text_message
+    phone = supplier.whatsapp_number
+    if not phone:
+        return False
+    if not phone.startswith("+"):
+        phone = f"91{phone}" if len(phone) == 10 else phone
+
+    rfq_number = rfq.rfq_number if rfq else "this RFQ"
+    project_name = (rfq.project_name or "your project") if rfq else "your project"
+    supplier_name = supplier.company_name or "Supplier"
+
+    message = (
+        f"🎉 *Congratulations, {supplier_name}!*\n\n"
+        f"We are delighted to inform you that your quotation for\n"
+        f"*{rfq_number} — {project_name}*\n"
+        f"has been selected by *Abhinav Group*! 🏆\n\n"
+        f"Your pricing, quality commitment, and delivery terms\n"
+        f"impressed us the most.\n\n"
+        f"📋 *What's Next:*\n"
+        f"Your Purchase Order is being prepared and will be\n"
+        f"shared with you shortly. Please keep the materials\n"
+        f"ready as per your quoted delivery timeline.\n\n"
+        f"We truly value your trust and partnership.\n"
+        f"Looking forward to a successful delivery! 💼🤝\n\n"
+        f"Thank you,\n"
+        f"*Abhinav Group — Purchase Department*"
+    )
+
+    try:
+        send_text_message(phone, message)
+        return True
+    except Exception as e:
+        print(f"[AWARD] Failed to send winner message to {phone}: {e}")
+        return False
+
+
+def send_award_consolation_message(supplier, rfq) -> bool:
+    """
+    Send respectful not-selected WhatsApp message to non-winning suppliers.
+    Returns True if sent successfully.
+    """
+    from app.services.whatsapp_service import send_text_message
+    phone = supplier.whatsapp_number
+    if not phone:
+        return False
+    if not phone.startswith("+"):
+        phone = f"91{phone}" if len(phone) == 10 else phone
+
+    rfq_number = rfq.rfq_number if rfq else "this RFQ"
+    project_name = (rfq.project_name or "this project") if rfq else "this project"
+    supplier_name = supplier.company_name or "Supplier"
+
+    message = (
+        f"🙏 *Thank You — {supplier_name}*\n\n"
+        f"We sincerely appreciate you taking the time to send\n"
+        f"your quotation for *{rfq_number} — {project_name}*.\n\n"
+        f"After careful review of all quotations received,\n"
+        f"we have finalized this order with another supplier.\n"
+        f"The decision was based on overall pricing, delivery\n"
+        f"terms, and project-specific requirements.\n\n"
+        f"Please do not be discouraged — this is not a\n"
+        f"reflection of your quality or service. We look\n"
+        f"forward to working with you on our upcoming\n"
+        f"requirements, and you will continue to receive\n"
+        f"our future RFQs. 🤝\n\n"
+        f"Thank you once again for your response and support.\n"
+        f"We truly value your partnership!\n\n"
+        f"Warm regards,\n"
+        f"*Abhinav Group — Purchase Department*"
+    )
+
+    try:
+        send_text_message(phone, message)
+        return True
+    except Exception as e:
+        print(f"[AWARD] Failed to send consolation message to {phone}: {e}")
+        return False

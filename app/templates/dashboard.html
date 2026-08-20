@@ -1,284 +1,236 @@
-{% extends "layouts/base.html" %}
+﻿{% extends "layouts/base.html" %}
 
-{% block title %}
-Dashboard
-{% endblock %}
+{% block title %}Dashboard — Abhinav Group Procurement{% endblock %}
 
 {% block content %}
 
 <div class="mb-4">
-
-    <h2 class="fw-bold mb-1">
-        Procurement Dashboard
-    </h2>
-
-    <p class="text-muted">
-        Overview of supplier registrations and procurement activities.
-    </p>
-
+    <h2 class="fw-bold mb-1">📊 Procurement Dashboard</h2>
+    <p class="text-muted">Overview of all procurement activity — suppliers, RFQs, quotations, and purchase orders.</p>
 </div>
 
-<div class="row">
-
-    {% with
-        title="Total Suppliers",
-        value=stats.total_suppliers,
-        icon="bi bi-buildings"
-    %}
-        {% include "components/stat_card.html" %}
-    {% endwith %}
-
-    {% with
-        title="Pending Approval",
-        value=stats.pending_suppliers,
-        icon="bi bi-hourglass-split"
-    %}
-        {% include "components/stat_card.html" %}
-    {% endwith %}
-
-    {% with
-        title="Approved",
-        value=stats.approved_suppliers,
-        icon="bi bi-check-circle-fill"
-    %}
-        {% include "components/stat_card.html" %}
-    {% endwith %}
-
-    {% with
-        title="Rejected",
-        value=stats.rejected_suppliers,
-        icon="bi bi-x-circle-fill"
-    %}
-        {% include "components/stat_card.html" %}
-    {% endwith %}
-
-</div>
-
-<div class="card shadow-sm border-0 rounded-4 mt-4">
-
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-
-        <h5 class="fw-bold mb-0">
-            Recent Supplier Registrations
-        </h5>
-
-        <a href="#" class="btn btn-outline-primary btn-sm">
-
-            View All
-
-        </a>
-
-    </div>
-
-    <div class="card-body">
-
-        <div class="table-responsive">
-
-            <table class="table table-hover align-middle">
-
-                <thead>
-
-                    <tr>
-
-                        <th>ID</th>
-
-                        <th>Company</th>
-
-                        <th>Category</th>
-
-                        <th>Contact Person</th>
-
-                        <th>Registered</th>
-
-                        <th>Status</th>
-
-                        <th>Actions</th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    {% for supplier in stats.recent_suppliers %}
-
-                    <tr>
-
-                        <td>
-
-                            <strong>#{{ supplier.id }}</strong>
-
-                        </td>
-
-                        <td>
-
-                            <strong>
-
-                                {{ supplier.company_name }}
-
-                            </strong>
-
-                        </td>
-
-                        <td>
-
-                            {{ supplier.supplier_category }}
-
-                        </td>
-
-                        <td>
-
-                            {{ supplier.contact_person_name }}
-
-                        </td>
-
-                        <td>
-
-                            {{ supplier.created_at.strftime('%d %b %Y') }}
-
-                        </td>
-
-                        <td>
-
-                            {% if supplier.registration_status == "APPROVED" %}
-
-                                <span class="badge bg-success">
-
-                                    Approved
-
-                                </span>
-
-                            {% elif supplier.registration_status == "REJECTED" %}
-
-                                <span class="badge bg-danger">
-
-                                    Rejected
-
-                                </span>
-
-                            {% else %}
-
-                                <span class="badge bg-warning text-dark">
-
-                                    Pending
-
-                                </span>
-
-                            {% endif %}
-
-                        </td>
-
-                        <td>
-
-                            <a
-                                href="/dashboard/suppliers/{{ supplier.id }}"
-                                class="btn btn-primary btn-sm">
-
-                                View
-
-                            </a>
-
-                        </td>
-
-                    </tr>
-
-                    {% endfor %}
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
-</div>
-
-
-<div class="row mt-4">
-
-    <div class="col-lg-6">
-
-        <div class="card shadow-sm border-0 rounded-4">
-
-            <div class="card-header bg-white">
-
-                <h5 class="fw-bold mb-0">
-
-                    ⚡ Quick Actions
-
-                </h5>
-
-            </div>
-
+<!-- Supplier Stats Row -->
+<div class="row g-3 mb-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #0d6efd !important;">
             <div class="card-body">
-
-                <div class="d-grid gap-3">
-
-                    <button class="btn btn-primary">
-
-                        Register New Supplier
-
-                    </button>
-
-                    <button class="btn btn-outline-primary">
-
-                        Pending Approvals
-
-                    </button>
-
-                    <button class="btn btn-outline-primary">
-
-                        Export Supplier Report
-
-                    </button>
-
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Total Suppliers</p>
+                        <h3 class="fw-bold mb-0">{{ stats.total_suppliers }}</h3>
+                    </div>
+                    <i class="bi bi-person-vcard text-primary fs-2 opacity-75"></i>
                 </div>
-
+                <a href="/dashboard/suppliers" class="stretched-link"></a>
             </div>
-
         </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Approved Suppliers</p>
+                        <h3 class="fw-bold mb-0">{{ stats.approved_suppliers }}</h3>
+                    </div>
+                    <i class="bi bi-check-circle text-success fs-2 opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #ffc107 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Pending Approval</p>
+                        <h3 class="fw-bold mb-0">{{ stats.pending_suppliers }}</h3>
+                    </div>
+                    <i class="bi bi-hourglass-split text-warning fs-2 opacity-75"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #0dcaf0 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Open RFQs</p>
+                        <h3 class="fw-bold mb-0">{{ procurement.open_rfqs }}</h3>
+                    </div>
+                    <i class="bi bi-envelope-paper text-info fs-2 opacity-75"></i>
+                </div>
+                <a href="/dashboard/rfq" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Procurement Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #6610f2 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Active Requirements</p>
+                        <h3 class="fw-bold mb-0">{{ procurement.active_reqs }}</h3>
+                        <small class="text-muted">of {{ procurement.total_reqs }} total</small>
+                    </div>
+                    <i class="bi bi-clipboard-check text-purple fs-2 opacity-75" style="color:#6610f2"></i>
+                </div>
+                <a href="/dashboard/requirements" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #fd7e14 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Quotations Received</p>
+                        <h3 class="fw-bold mb-0">{{ procurement.total_quotations }}</h3>
+                    </div>
+                    <i class="bi bi-chat-quote fs-2 opacity-75" style="color:#fd7e14"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100" style="border-left: 4px solid #20c997 !important;">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <p class="text-muted small mb-1">Active Purchase Orders</p>
+                        <h3 class="fw-bold mb-0">{{ procurement.active_pos }}</h3>
+                    </div>
+                    <i class="bi bi-cart-check text-teal fs-2 opacity-75" style="color:#20c997"></i>
+                </div>
+                <a href="/dashboard/purchase-orders" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 rounded-4 shadow-sm h-100 bg-primary text-white" style="cursor:pointer;" onclick="window.location='/dashboard/rfq/create'">
+            <div class="card-body d-flex align-items-center justify-content-center flex-column text-center">
+                <i class="bi bi-plus-circle fs-2 mb-1"></i>
+                <p class="fw-semibold mb-0">New Requirement</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Two column layout: Recent Reqs + Recent RFQs -->
+<div class="row g-4">
+
+    <!-- Recent Requirements -->
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-clipboard-check text-primary me-2"></i>Recent Requirements</h5>
+                <a href="/dashboard/requirements" class="btn btn-outline-primary btn-sm">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_reqs %}
+                        {% for req in recent_reqs %}
+                        <tr style="cursor:pointer;" onclick="window.location='/dashboard/requirements/{{ req.id }}'">
+                            <td class="fw-semibold small">{{ req.title or 'Requirement #' ~ req.id }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if req.status == 'COMPLETED' %}bg-success
+                                    {% elif req.status == 'IN_PROGRESS' %}bg-primary
+                                    {% elif req.status == 'CANCELLED' %}bg-danger
+                                    {% else %}bg-warning text-dark{% endif %}">
+                                    {{ req.status }}
+                                </span>
+                            </td>
+                            <td><span class="badge bg-light text-dark border">{{ req.priority or 'Normal' }}</span></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">No requirements yet</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
-
-    <div class="col-lg-6">
-
-        <div class="card shadow-sm border-0 rounded-4">
-
-            <div class="card-header bg-white">
-
-                <h5 class="fw-bold mb-0">
-
-                    🤖 AI Procurement Insights
-
-                </h5>
-
+    <!-- Recent RFQs -->
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 rounded-4 h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-envelope-paper text-info me-2"></i>Recent RFQs</h5>
+                <a href="/dashboard/rfq" class="btn btn-outline-info btn-sm">View All</a>
             </div>
-
-            <div class="card-body">
-
-                <ul class="mb-0">
-
-                    <li>5 suppliers awaiting approval</li>
-
-                    <li>Duplicate GST detection coming soon</li>
-
-                    <li>Vendor risk analysis coming soon</li>
-
-                    <li>AI quotation comparison coming soon</li>
-
-                </ul>
-
+            <div class="card-body p-0">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>RFQ Number</th>
+                            <th>Project</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_rfqs %}
+                        {% for rfq in recent_rfqs %}
+                        <tr style="cursor:pointer;" onclick="window.location='/dashboard/rfq/{{ rfq.id }}'">
+                            <td class="fw-semibold small">{{ rfq.rfq_number }}</td>
+                            <td class="small text-muted">{{ rfq.project_name or '—' }}</td>
+                            <td>
+                                <span class="badge
+                                    {% if rfq.status == 'Closed' %}bg-success
+                                    {% elif rfq.status == 'Sent' %}bg-primary
+                                    {% elif rfq.status == 'Awarded' %}bg-warning text-dark
+                                    {% elif rfq.status == 'Cancelled' %}bg-danger
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ rfq.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">No RFQs yet</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
-
         </div>
-
     </div>
 
 </div>
 
-
-
+<!-- Quick Actions -->
+<div class="mt-4">
+    <h5 class="fw-bold mb-3">⚡ Quick Actions</h5>
+    <div class="d-flex gap-3 flex-wrap">
+        <a href="/dashboard/rfq/create" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i> New Requirement
+        </a>
+        <a href="/dashboard/suppliers" class="btn btn-outline-primary">
+            <i class="bi bi-person-vcard me-1"></i> Manage Suppliers
+        </a>
+        <a href="/dashboard/rfq" class="btn btn-outline-info">
+            <i class="bi bi-envelope-paper me-1"></i> View All RFQs
+        </a>
+        <a href="/dashboard/purchase-orders" class="btn btn-outline-success">
+            <i class="bi bi-cart-check me-1"></i> Purchase Orders
+        </a>
+        <a href="/dashboard/inbox/" class="btn btn-outline-secondary">
+            <i class="bi bi-whatsapp me-1"></i> WhatsApp Inbox
+        </a>
+    </div>
+</div>
 
 {% endblock %}

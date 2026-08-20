@@ -122,7 +122,7 @@ def process_whatsapp_message(
     # ── No active conversation ────────────────────────────────────────────────
     if not conversation:
 
-        if incoming_upper in _GREETING_WORDS:
+        if incoming_upper in _GREETING_WORDS or incoming_upper == "REGISTER":
             return {"reply": WELCOME_MESSAGE}
 
         if incoming_upper == "START":
@@ -286,15 +286,30 @@ def process_whatsapp_message(
         data.pop("_edit_mode", None)  # Clean up edit flag
         conversation.collected_data = data
         supplier_data = map_conversation_to_supplier(data)
+        supplier_data["whatsapp_number"] = phone_number
         try:
-            new_supplier = Supplier(**supplier_data)
-            db.add(new_supplier)
+            # Find the existing supplier created as a placeholder
+            clean_phone = phone_number.replace("+", "").strip()
+            clean_phone_10 = clean_phone[-10:] if (clean_phone.startswith("91") and len(clean_phone) > 10) else clean_phone
+            supplier = db.query(Supplier).filter(
+                (Supplier.whatsapp_number.like(f"%{clean_phone_10}")) |
+                (Supplier.whatsapp_number == phone_number)
+            ).first()
+
+            if supplier:
+                # Update attributes in place
+                for k, v in supplier_data.items():
+                    setattr(supplier, k, v)
+            else:
+                supplier = Supplier(**supplier_data)
+                db.add(supplier)
+
             db.flush()
             conversation.conversation_status = "COMPLETED"
             db.commit()
             return {
                 "reply": (
-                    f"✅ Registration completed successfully. Supplier ID: {new_supplier.id}\n\n"
+                    f"✅ Registration completed successfully. Supplier ID: {supplier.id}\n\n"
                     "Thank you for registering with Abhinav Group!\n\n"
                     "💡 For any future updates to your registered information, please message this chat directly "
                     "and our Purchase Manager will assist you manually."
