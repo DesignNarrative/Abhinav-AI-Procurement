@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.rfq import RFQ
@@ -264,7 +264,8 @@ class RFQService:
         rfq_id: int,
         deadline: str = None,
         contact_person: str = None,
-        contact_number: str = None
+        contact_number: str = None,
+        purchase_team_number: str = None
     ) -> dict:
         from app.services.rfq_whatsapp_service import generate_rfq_whatsapp_message
         from app.services.whatsapp_service import send_text_message
@@ -310,7 +311,8 @@ class RFQService:
             contact_number=contact_number,
             priority=rfq.priority,
             required_date=rfq.required_date,
-            purpose=rfq.purpose
+            purpose=rfq.purpose,
+            purchase_team_number=purchase_team_number
         )
 
         results = []
@@ -343,6 +345,37 @@ class RFQService:
             if last_inbound:
                 wa_result = send_text_message(phone, message)
                 whatsapp_status = "Sent"
+
+                # ── Send quotation trigger so supplier knows to type QUOTE ──
+                from app.services.rfq_whatsapp_service import generate_quotation_trigger_message
+                trigger_msg = generate_quotation_trigger_message(rfq.rfq_number)
+                try:
+                    send_text_message(phone, trigger_msg)
+                except Exception as te:
+                    print(f"[RFQ] Failed to send quotation trigger to {phone}: {te}")
+
+                # ── Log both outbound messages to inbox so PM sees full flow ──
+                try:
+                    db.add(WhatsAppInboxMessage(
+                        supplier_id=vendor.id,
+                        supplier_phone=phone,
+                        message_text=message,
+                        direction="outbound",
+                        is_read=True,
+                        media_type="text"
+                    ))
+                    db.add(WhatsAppInboxMessage(
+                        supplier_id=vendor.id,
+                        supplier_phone=phone,
+                        message_text=trigger_msg,
+                        direction="outbound",
+                        is_read=True,
+                        media_type="text"
+                    ))
+                    db.commit()
+                except Exception as le:
+                    db.rollback()
+                    print(f"[RFQ] Failed to log outbound RFQ messages to inbox: {le}")
             else:
                 template_name = WHATSAPP_RFQ_TEMPLATE or "rfq_invitation"
                 if template_name == "hello_world":
@@ -392,7 +425,8 @@ class RFQService:
         vendor_ids: list,
         deadline: str = None,
         contact_person: str = None,
-        contact_number: str = None
+        contact_number: str = None,
+        purchase_team_number: str = None
     ) -> dict:
         """
         Re-send (or first-send) the RFQ WhatsApp message to a specific subset
@@ -438,7 +472,8 @@ class RFQService:
             contact_number=contact_number,
             priority=rfq.priority,
             required_date=rfq.required_date,
-            purpose=rfq.purpose
+            purpose=rfq.purpose,
+            purchase_team_number=purchase_team_number
         )
 
         results = []
@@ -483,6 +518,37 @@ class RFQService:
             if last_inbound:
                 wa_result = send_text_message(phone, message)
                 whatsapp_status = "Sent"
+
+                # ── Send quotation trigger so supplier knows to type QUOTE ──
+                from app.services.rfq_whatsapp_service import generate_quotation_trigger_message
+                trigger_msg = generate_quotation_trigger_message(rfq.rfq_number)
+                try:
+                    send_text_message(phone, trigger_msg)
+                except Exception as te:
+                    print(f"[RFQ] Failed to send quotation trigger to {phone}: {te}")
+
+                # ── Log both outbound messages to inbox so PM sees full flow ──
+                try:
+                    db.add(WhatsAppInboxMessage(
+                        supplier_id=vendor.id,
+                        supplier_phone=phone,
+                        message_text=message,
+                        direction="outbound",
+                        is_read=True,
+                        media_type="text"
+                    ))
+                    db.add(WhatsAppInboxMessage(
+                        supplier_id=vendor.id,
+                        supplier_phone=phone,
+                        message_text=trigger_msg,
+                        direction="outbound",
+                        is_read=True,
+                        media_type="text"
+                    ))
+                    db.commit()
+                except Exception as le:
+                    db.rollback()
+                    print(f"[RFQ] Failed to log outbound RFQ messages to inbox: {le}")
             else:
                 template_name = WHATSAPP_RFQ_TEMPLATE or "rfq_invitation"
                 if template_name == "hello_world":

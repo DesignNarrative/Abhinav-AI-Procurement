@@ -1,4 +1,4 @@
-﻿"""
+"""
 RFQ WhatsApp Message Generator.
 
 This module is completely dynamic. It does NOT have any hardcoded material types.
@@ -34,6 +34,7 @@ def generate_rfq_whatsapp_message(
     priority: Optional[str] = None,
     required_date: Optional[str] = None,
     purpose: Optional[str] = None,
+    purchase_team_number: Optional[str] = None,
 ) -> str:
     """
     Generates a short, human-sounding WhatsApp RFQ message.
@@ -42,9 +43,12 @@ def generate_rfq_whatsapp_message(
 
     lines.append("Hello! 👋")
     lines.append("")
-    
+
+    lines.append(f"📋 *RFQ No.: {rfq_number}*")
+    lines.append("")
+
     lines.append("We are *Abhinav Group* (Real estate builders & construction company in Pune).")
-    lines.append("We are Looking for rates/availability of these materials for our project:")
+    lines.append("We are looking for rates/availability of these materials for our project:")
     lines.append("")
 
     lines.append("*Materials Required:*")
@@ -59,7 +63,7 @@ def generate_rfq_whatsapp_message(
                 lines.append(f"  • {_label(key)}: {value}")
         
         if item.get("remarks"):
-            lines.append(f"  • Note: {item['remarks']}")
+            lines.append(f"  • Purpose: {item['remarks']}")
 
     lines.append("")
     lines.append(f"📍 Delivery: {delivery_location}")
@@ -67,34 +71,32 @@ def generate_rfq_whatsapp_message(
     if required_date:
         lines.append(f"📅 Required By: {required_date}")
         
-    if deadline:
-        lines.append(f"📅 Quotation Deadline: {deadline}")
-        
     if purpose:
         lines.append(f"🎯 Purpose: {purpose}")
     
     if payment_terms:
         lines.append(f"💳 Payment Terms: {payment_terms}")
+
+    # Display Send Options (Site Contact fields) separately if filled
+    if deadline and deadline.strip():
+        lines.append(f"📅 Quotation Deadline: {deadline.strip()}")
+    if contact_person and contact_person.strip():
+        lines.append(f"👤 Site Contact Person: {contact_person.strip()}")
+    if contact_number and contact_number.strip():
+        lines.append(f"📞 Site Contact Number: {contact_number.strip()}")
         
     lines.append("")
     lines.append("Please reply in this chat with your best rate (mention GST separately) and delivery timeline.")
     lines.append("")
+
+    # Determine final purchase team number
+    final_purchase_number = "7219550051"
+    if purchase_team_number and purchase_team_number.strip():
+        final_purchase_number = purchase_team_number.strip()
+
     lines.append("Thanks,")
-    lines.append("*Abhinav Group — Purchase Team*")
-    
-    # Defaults
-    if not contact_person:
-        contact_person = "Mr. Avdhut Chakradhar"
-    if not contact_number:
-        contact_number = "7219550051"
-        
-    contact_info = []
-    if contact_person:
-        contact_info.append(contact_person)
-    if contact_number:
-        contact_info.append(contact_number)
-    if contact_info:
-        lines.append(f"📞 {' / '.join(contact_info)}")
+    lines.append("Abhinav Group — Purchase Team")
+    lines.append(f"📞{final_purchase_number}")
 
     return "\n".join(lines)
 
@@ -107,7 +109,7 @@ def generate_quotation_trigger_message(rfq_number: str) -> str:
     return (
         f"📝 Got the RFQ?\n\n"
         f"To send your quotation for *{rfq_number}*, type:\n"
-        f"*QUOTE*\n\n"
+        f"*Quote*\n\n"
         f"We will guide you step by step. 👍"
     )
 

@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.dependencies import get_db
@@ -170,8 +170,15 @@ def award_and_notify(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PO creation failed: {str(e)}")
 
+    # Resolve winning_vendor_id with fallback to winning_quotation_id
+    winning_vendor_id = payload.winning_vendor_id
+    if not winning_vendor_id or winning_vendor_id == 0:
+        winning_quote = db.query(Quotation).filter(Quotation.id == payload.winning_quotation_id).first()
+        if winning_quote:
+            winning_vendor_id = winning_quote.vendor_id
+
     # Step 3: Send winner message
-    winner_vendor = db.query(Supplier).filter(Supplier.id == payload.winning_vendor_id).first()
+    winner_vendor = db.query(Supplier).filter(Supplier.id == winning_vendor_id).first()
     winner_sent = False
     if winner_vendor:
         winner_sent = send_award_winner_message(winner_vendor, rfq, po)
@@ -180,7 +187,7 @@ def award_and_notify(
     consolation_results = []
     all_rfq_vendors = db.query(RFQVendor).filter(RFQVendor.rfq_id == rfq_id).all()
     for rv in all_rfq_vendors:
-        if rv.vendor_id == payload.winning_vendor_id:
+        if rv.vendor_id == winning_vendor_id:
             continue  # skip winner
         # Only message vendors who actually submitted a quotation
         submitted = db.query(Quotation).filter(

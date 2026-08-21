@@ -152,6 +152,7 @@ def send_rfq(
     deadline: str = None,
     contact_person: str = None,
     contact_number: str = None,
+    purchase_team_number: str = None,
     db: Session = Depends(get_db)
 ):
     rfq = RFQService.get_rfq(db, rfq_id)
@@ -162,7 +163,8 @@ def send_rfq(
         db, rfq_id,
         deadline=deadline,
         contact_person=contact_person,
-        contact_number=contact_number
+        contact_number=contact_number,
+        purchase_team_number=purchase_team_number
     )
     return result
 
@@ -172,6 +174,7 @@ class RFQResendPayload(BaseModel):
     deadline: Optional[str] = None
     contact_person: Optional[str] = None
     contact_number: Optional[str] = None
+    purchase_team_number: Optional[str] = None
 
 
 @router.post("/{rfq_id}/resend")
@@ -195,7 +198,8 @@ def resend_rfq(
         vendor_ids=payload.vendor_ids,
         deadline=payload.deadline,
         contact_person=payload.contact_person,
-        contact_number=payload.contact_number
+        contact_number=payload.contact_number,
+        purchase_team_number=payload.purchase_team_number
     )
     return result
 
@@ -211,6 +215,7 @@ def preview_rfq_message(
     deadline: str = None,
     contact_person: str = None,
     contact_number: str = None,
+    purchase_team_number: str = None,
     db: Session = Depends(get_db)
 ):
     from app.services.rfq_whatsapp_service import generate_rfq_whatsapp_message
@@ -247,7 +252,8 @@ def preview_rfq_message(
         contact_number=contact_number,
         priority=rfq.priority,
         required_date=rfq.required_date,
-        purpose=rfq.purpose
+        purpose=rfq.purpose,
+        purchase_team_number=purchase_team_number
     )
 
     return {"rfq_number": rfq.rfq_number, "message": message}
@@ -293,7 +299,8 @@ def preview_rfq_message_unsaved(
         contact_number=payload.contact_number,
         priority=payload.priority,
         required_date=payload.required_date,
-        purpose=payload.purpose
+        purpose=payload.purpose,
+        purchase_team_number=payload.purchase_team_number
     )
 
     return {"message": message}

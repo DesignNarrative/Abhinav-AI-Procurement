@@ -158,10 +158,22 @@ class ComparisonService:
             db.query(Quotation)
             .filter(
                 Quotation.rfq_id == rfq_id,
-                Quotation.is_latest == True  # noqa: E712
+                Quotation.is_latest == True,  # noqa: E712
+                Quotation.approved_for_comparison == True  # noqa: E712
             )
             .order_by(Quotation.grand_total.asc())
             .all()
+        )
+
+        # Count quotations waiting PM review (received but not yet sent to comparison)
+        pending_review_count = (
+            db.query(Quotation)
+            .filter(
+                Quotation.rfq_id == rfq_id,
+                Quotation.is_latest == True,  # noqa: E712
+                Quotation.approved_for_comparison == False  # noqa: E712
+            )
+            .count()
         )
 
         award = db.query(RFQAward).filter(
@@ -176,6 +188,8 @@ class ComparisonService:
             vendor = db.query(Supplier).filter(
                 Supplier.id == q.vendor_id
             ).first()
+            qi_remarks = [qi.remarks for qi in q.items if qi.remarks]
+            combined_remarks = "; ".join(qi_remarks) if qi_remarks else None
             vendor_columns.append({
                 "quotation_id": q.id,
                 "quotation_number": q.quotation_number,
@@ -190,7 +204,8 @@ class ComparisonService:
                 "validity_date": str(q.validity_date) if q.validity_date else None,
                 "date_received": str(q.date_received),
                 "status": q.status,
-                "creation_source": q.creation_source
+                "creation_source": q.creation_source,
+                "remarks": combined_remarks
             })
 
         # ── Item rows with per-vendor cells + rank ────
@@ -370,6 +385,7 @@ class ComparisonService:
             "project_name": rfq.project_name,
             "site_name": rfq.site_name,
             "quotation_count": len(vendor_columns),
+            "pending_review_count": pending_review_count,
             "weights": weights,
             "vendors": vendor_columns,
             "items": item_rows,

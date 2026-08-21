@@ -1,4 +1,4 @@
-﻿{% extends "layouts/base.html" %}
+{% extends "layouts/base.html" %}
 
 {% block title %}{{ comparison.rfq_number }} — Quotation Comparison{% endblock %}
 
@@ -23,7 +23,7 @@
         <div class="d-flex align-items-center">
             <i class="bi bi-trophy-fill me-2 fs-4"></i>
             <div>
-                <strong>Awarded.</strong>
+                <strong>Selected.</strong>
                 This RFQ was awarded to
                 {% for v in comparison.vendors %}{% if v.vendor_id == comparison.award.vendor_id %}<strong>{{ v.vendor_name }}</strong>{% endif %}{% endfor %}
                 by {{ comparison.award.approved_by }}
@@ -37,13 +37,32 @@
     </div>
     {% endif %}
 
+    {% if comparison.pending_review_count and comparison.pending_review_count > 0 and not comparison.award %}
+    <div class="alert alert-warning d-flex align-items-center" role="alert">
+        <i class="bi bi-clock-history fs-4 me-3"></i>
+        <div>
+            <strong>{{ comparison.pending_review_count }} quotation(s) pending review.</strong>
+            They have been received but not yet sent to comparison by the Purchase Manager.
+            Go to the <a href="/dashboard/rfq/{{ comparison.rfq_id }}" class="alert-link">RFQ page</a> to review and click <strong>"Send to Comparison"</strong> on each quotation.
+        </div>
+    </div>
+    {% endif %}
+
     {% if comparison.quotation_count == 0 %}
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-body text-center py-5">
             <i class="bi bi-inbox fs-1 text-muted"></i>
-            <p class="text-muted mt-2 mb-0">No quotations received for this RFQ yet.</p>
+            <p class="text-muted mt-2 mb-2">No quotations have been approved for comparison yet.</p>
+            {% if comparison.pending_review_count and comparison.pending_review_count > 0 %}
+            <a href="/dashboard/rfq/{{ comparison.rfq_id }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i> Review {{ comparison.pending_review_count }} Pending Quotation(s)
+            </a>
+            {% else %}
+            <p class="text-muted small">No quotations received for this RFQ yet.</p>
+            {% endif %}
         </div>
     </div>
+
     {% else %}
 
     <!-- AI Recommendation -->
@@ -104,13 +123,22 @@
                         {% if cell.is_quoted %}
                         <td class="text-center {% if cell.rank == 'L1' %}table-success{% endif %}">
                             <div class="fw-bold">₹{{ "%.2f"|format(cell.final_landed_rate) }}</div>
+                            {% if cell.basic_rate > 0 or cell.tax_percent > 0 %}
                             <div class="text-muted small">
                                 Basic ₹{{ "%.2f"|format(cell.basic_rate) }}
                                 {% if cell.discount_percent > 0 %} &middot; Disc {{ cell.discount_percent }}%{% endif %}
                                 &middot; GST {{ cell.tax_percent }}%
                             </div>
+                            {% else %}
+                            <div class="text-muted small">
+                                Total: ₹{{ "%.2f"|format(cell.total_item_amount) }} (All-incl.)
+                            </div>
+                            {% endif %}
                             {% if cell.brand_offered %}
                             <div class="text-muted small">{{ cell.brand_offered }}</div>
+                            {% endif %}
+                            {% if cell.remarks %}
+                            <div class="text-secondary small mt-1 font-italic">💬 {{ cell.remarks }}</div>
                             {% endif %}
                             {% if cell.rank %}
                             <span class="badge {% if cell.rank == 'L1' %}bg-success{% elif cell.rank == 'L2' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ cell.rank }}</span>
@@ -191,6 +219,12 @@
                         {% endfor %}
                     </tr>
                     <tr>
+                        <td class="text-muted">Remarks / Conditions</td>
+                        {% for v in comparison.vendors %}
+                        <td class="text-center small text-wrap" style="max-width: 200px;">{{ v.remarks or "-" }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
                         <td class="text-muted">Weighted Score</td>
                         {% for v in comparison.vendors %}
                         <td class="text-center">
@@ -209,10 +243,12 @@
                         <td class="fw-bold">Select Winner</td>
                         {% for v in comparison.vendors %}
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-success award-btn"
+                            <button class="btn btn-sm btn-success award-btn"
                                     data-quotation-id="{{ v.quotation_id }}"
-                                    data-vendor-name="{{ v.vendor_name }}">
-                                <i class="bi bi-trophy me-1"></i> Award
+                                    data-vendor-id="{{ v.vendor_id }}"
+                                    data-vendor-name="{{ v.vendor_name }}"
+                                    data-grand-total="{{ v.grand_total }}">
+                                <i class="bi bi-check-circle me-1"></i> Select This Quotation
                             </button>
                         </td>
                         {% endfor %}
@@ -249,41 +285,55 @@
     {% endif %}
 </div>
 
-<!-- Award Modal -->
+<!-- Select This Quotation Modal (improved) -->
 <div class="modal fade" id="awardModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-md">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-trophy text-success me-2"></i>Award RFQ to <span id="awardVendorName"></span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-check-circle-fill me-2"></i>Select Quotation — <span id="awardVendorName"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- Summary of what will happen -->
+                <div class="alert alert-info mb-3 small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    <strong>What happens after you confirm:</strong>
+                    <ul class="mb-0 mt-1">
+                        <li>✅ <strong><span id="awardVendorName2"></span></strong> will be selected as the winner</li>
+                        <li>📄 A <strong>Purchase Order</strong> will be auto-created with all details</li>
+                        <li>📱 Winner gets a <strong>WhatsApp congratulation message</strong></li>
+                        <li>📱 Other suppliers get a <strong>WhatsApp "not selected" message</strong></li>
+                        <li>🔒 RFQ will be <strong>closed</strong> automatically</li>
+                    </ul>
+                </div>
+                <div class="fw-bold mb-2 text-success">Grand Total: ₹<span id="awardGrandTotal"></span></div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold">Selection Reason</label>
+                    <label class="form-label fw-semibold">Selection Reason <span class="text-danger">*</span></label>
                     <select class="form-select" id="selectionReason">
                         <option value="Lowest cost">Lowest cost</option>
-                        <option value="Best value">Best value</option>
+                        <option value="Best value overall">Best value overall</option>
                         <option value="Fastest delivery">Fastest delivery</option>
                         <option value="Preferred supplier">Preferred supplier</option>
-                        <option value="Emergency">Emergency</option>
+                        <option value="Exact brand specification">Exact brand specification</option>
+                        <option value="Emergency requirement">Emergency requirement</option>
                         <option value="Director approval">Director approval</option>
                         <option value="Previous relationship">Previous relationship</option>
-                        <option value="Single source">Single source</option>
+                        <option value="Single source">Single source — only supplier available</option>
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold">Approved By</label>
-                    <input type="text" class="form-control" id="approvedBy" placeholder="Your name">
+                    <label class="form-label fw-semibold">Approved By <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="approvedBy" placeholder="Your full name (e.g. Ravi Sharma)">
                 </div>
                 <div class="mb-2">
                     <label class="form-label fw-semibold">Remarks (optional)</label>
-                    <textarea class="form-control" id="awardRemarks" rows="2"></textarea>
+                    <textarea class="form-control" id="awardRemarks" rows="2" placeholder="e.g. Negotiated 3% discount, confirmed delivery by 25th Aug"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="confirmAwardBtn">
-                    <i class="bi bi-check-circle me-1"></i> Confirm Award
+                    <i class="bi bi-check-circle-fill me-1"></i> Confirm — Create PO &amp; Notify Suppliers
                 </button>
             </div>
         </div>
@@ -295,8 +345,9 @@
 <script>
 const rfqId = {{ comparison.rfq_id }};
 let selectedQuotationId = null;
+let selectedVendorId = null;
 
-// Create Purchase Order from the awarded quotation
+// Create Purchase Order from existing award (if already awarded and PO not yet made)
 const createPoBtn = document.getElementById('createPoBtn');
 if (createPoBtn) {
     createPoBtn.addEventListener('click', async () => {
@@ -323,7 +374,12 @@ const awardModal = awardModalEl ? new bootstrap.Modal(awardModalEl) : null;
 document.querySelectorAll('.award-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         selectedQuotationId = parseInt(btn.dataset.quotationId);
-        document.getElementById('awardVendorName').textContent = btn.dataset.vendorName;
+        selectedVendorId = parseInt(btn.dataset.vendorId) || null;
+        const vendorName = btn.dataset.vendorName;
+        const grandTotal = parseFloat(btn.dataset.grandTotal || 0).toLocaleString('en-IN', {maximumFractionDigits: 0});
+        document.getElementById('awardVendorName').textContent = vendorName;
+        document.getElementById('awardVendorName2').textContent = vendorName;
+        document.getElementById('awardGrandTotal').textContent = grandTotal;
         awardModal.show();
     });
 });
@@ -332,24 +388,41 @@ const confirmBtn = document.getElementById('confirmAwardBtn');
 if (confirmBtn) {
     confirmBtn.addEventListener('click', async () => {
         const approvedBy = document.getElementById('approvedBy').value.trim();
-        if (!approvedBy) { alert('Please enter who approved this selection.'); return; }
+        if (!approvedBy) { alert('Please enter your name (Approved By).'); return; }
 
-        const res = await fetch(`/rfqs/${rfqId}/award`, {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Processing...';
+
+        // Use award-and-notify endpoint: awards + creates PO + sends WhatsApp in one call
+        const res = await fetch(`/rfqs/${rfqId}/award-and-notify`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                quotation_id: selectedQuotationId,
+                rfq_id: rfqId,
+                winning_vendor_id: selectedVendorId || 0,
+                winning_quotation_id: selectedQuotationId,
                 selection_reason: document.getElementById('selectionReason').value,
                 approved_by: approvedBy,
                 remarks: document.getElementById('awardRemarks').value.trim() || null
             })
         });
+
         if (res.ok) {
-            alert('Vendor awarded successfully.');
-            window.location.reload();
-        } else {
             const data = await res.json();
-            alert(data.detail || 'Failed to award.');
+            awardModal.hide();
+            const poNum = data.po_number || '';
+            const winnerSent = data.messages_sent?.winner ? '✅ Sent' : '⚠️ Not sent';
+            alert(`✅ Quotation selected successfully!\n\n📄 Purchase Order: ${poNum}\n📱 Winner WhatsApp: ${winnerSent}\n📱 Consolation messages: ${(data.messages_sent?.consolation || []).length} sent\n\nRedirecting to Purchase Order...`);
+            if (data.po_id) {
+                window.location.href = `/dashboard/purchase-orders/${data.po_id}`;
+            } else {
+                window.location.reload();
+            }
+        } else {
+            const errData = await res.json().catch(() => ({}));
+            alert(errData.detail || 'Failed to select quotation. Please try again.');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Confirm — Create PO & Notify Suppliers';
         }
     });
 }

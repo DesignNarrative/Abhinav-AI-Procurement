@@ -1,0 +1,277 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Procurement Tracker{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">
+                <i class="bi bi-kanban text-primary me-2"></i>Procurement Tracker
+            </h2>
+            <p class="text-muted mb-0">
+                Track every requirement from material request &rarr; RFQ &rarr; quotation &rarr; purchase order.
+            </p>
+        </div>
+        <a href="/dashboard/rfq/create" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i> New Requirement / RFQ
+        </a>
+    </div>
+
+    <!-- Search & Filter -->
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-body py-3">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold small">Search</label>
+                    <input type="text" name="search" class="form-control" placeholder="Req. No / RFQ No / Project / Site..." value="{{ search }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Stage</label>
+                    <select name="stage" class="form-select">
+                        <option value="">All Stages</option>
+                        <option value="draft" {% if stage == "draft" %}selected{% endif %}>🔵 Draft</option>
+                        <option value="ready_to_send" {% if stage == "ready_to_send" %}selected{% endif %}>🟡 Ready to Send</option>
+                        <option value="rfq_sent" {% if stage == "rfq_sent" %}selected{% endif %}>📤 RFQ Sent</option>
+                        <option value="quotes_received" {% if stage == "quotes_received" %}selected{% endif %}>📥 Quotes Received</option>
+                        <option value="in_comparison" {% if stage == "in_comparison" %}selected{% endif %}>⚖️ In Comparison</option>
+                        <option value="awarded" {% if stage == "awarded" %}selected{% endif %}>✅ Awarded</option>
+                        <option value="po_created" {% if stage == "po_created" %}selected{% endif %}>📄 PO Created</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <label class="form-label invisible small">&nbsp;</label>
+                    <button class="btn btn-primary"><i class="bi bi-search me-1"></i>Search</button>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <label class="form-label invisible small">&nbsp;</label>
+                    <a href="/dashboard/procurement/" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ══ ACTIVE REQUIREMENTS ════════════════════════════ -->
+    {% if active_items %}
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="fw-bold mb-0">
+                <i class="bi bi-lightning-fill text-warning me-1"></i>Active Procurement
+            </h5>
+            <span class="badge bg-primary rounded-pill">{{ active_items|length }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:160px;">Number</th>
+                            <th>Project / Site</th>
+                            <th>Materials</th>
+                            <th>Stage</th>
+                            <th>RFQ / Quotes</th>
+                            <th class="text-center" style="width:220px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in active_items %}
+                        {% if e.type == "requirement" %}
+                        {% set req = e.req %}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold text-primary small">{{ req.requirement_number }}</div>
+                                <div class="text-muted" style="font-size:0.72rem;">{{ req.requested_by }}</div>
+                                {% if req.priority == "HIGH" or req.priority == "URGENT" %}
+                                <span class="badge bg-danger" style="font-size:0.6rem;">{{ req.priority }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="fw-semibold small">{{ req.project_name }}</div>
+                                <div class="text-muted" style="font-size:0.72rem;">{{ req.site_name }}</div>
+                                {% if req.required_date %}<div class="text-muted" style="font-size:0.7rem;"><i class="bi bi-calendar2 me-1"></i>{{ req.required_date }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {% set mats = req.materials or [] %}
+                                {% if mats|length > 0 %}
+                                <span class="badge bg-secondary me-1">{{ mats|length }}</span>
+                                <span class="small text-muted">
+                                    {{ mats[0].material_name }}{% if mats|length > 1 %}, {{ mats[1].material_name }}{% endif %}{% if mats|length > 2 %} <em>+{{ mats|length - 2 }} more</em>{% endif %}
+                                </span>
+                                {% else %}
+                                <span class="text-muted small">No materials added yet</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ e.stage_color }} text-white" style="font-size:0.75rem;">{{ e.stage_label }}</span>
+                            </td>
+                            <td class="small">
+                                {% if e.rfq %}
+                                <a href="/dashboard/rfq/{{ e.rfq.id }}" class="fw-semibold text-decoration-none text-primary">{{ e.rfq.rfq_number }}</a>
+                                <div class="text-muted" style="font-size:0.72rem;">
+                                    <i class="bi bi-send me-1"></i>{{ e.vendor_count }} supplier{% if e.vendor_count != 1 %}s{% endif %}
+                                    &nbsp;&middot;&nbsp;
+                                    <i class="bi bi-chat-quote me-1"></i>{{ e.quote_count }} quote{% if e.quote_count != 1 %}s{% endif %}
+                                    {% if e.approved_count > 0 %}
+                                    &nbsp;&middot;&nbsp;
+                                    <span class="text-success"><i class="bi bi-check-circle me-1"></i>{{ e.approved_count }} approved</span>
+                                    {% endif %}
+                                </div>
+                                {% else %}
+                                <span class="text-muted" style="font-size:0.75rem;"><i class="bi bi-hourglass me-1"></i>No RFQ yet</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                    <a href="/dashboard/requirements/{{ req.id }}" class="btn btn-sm btn-outline-primary" title="View Requirement">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                    {% if e.rfq %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}" class="btn btn-sm btn-outline-secondary" title="View RFQ & Quotations">
+                                        <i class="bi bi-file-text"></i> RFQ
+                                    </a>
+                                    {% endif %}
+                                    {% if e.can_compare %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}/comparison" class="btn btn-sm btn-success" title="Compare Quotations">
+                                        <i class="bi bi-bar-chart"></i> Compare
+                                    </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ══ STANDALONE RFQs ══════════════════════════════════ -->
+    {% if standalone_items %}
+    <div class="card shadow-sm border-0 rounded-4 mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="fw-bold mb-0">
+                <i class="bi bi-envelope-paper text-primary me-1"></i>Standalone RFQs
+                <span class="text-muted fw-normal small ms-1">(created without a Requirement)</span>
+            </h5>
+            <span class="badge bg-secondary rounded-pill">{{ standalone_items|length }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>RFQ Number</th>
+                            <th>Project / Site</th>
+                            <th>Stage</th>
+                            <th>Quotes</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in standalone_items %}
+                        <tr>
+                            <td>
+                                <a href="/dashboard/rfq/{{ e.rfq.id }}" class="fw-semibold text-decoration-none text-primary">{{ e.rfq.rfq_number }}</a>
+                                <div class="text-muted" style="font-size:0.72rem;">{{ e.rfq.created_by }}</div>
+                            </td>
+                            <td>
+                                <div class="fw-semibold small">{{ e.rfq.project_name }}</div>
+                                <div class="text-muted" style="font-size:0.72rem;">{{ e.rfq.site_name }}</div>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ e.stage_color }}" style="font-size:0.75rem;">{{ e.stage_label }}</span>
+                            </td>
+                            <td class="small text-muted">
+                                <i class="bi bi-send me-1"></i>{{ e.vendor_count }} supplier{% if e.vendor_count != 1 %}s{% endif %}
+                                &nbsp;&middot;&nbsp;
+                                <i class="bi bi-chat-quote me-1"></i>{{ e.quote_count }} quote{% if e.quote_count != 1 %}s{% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-flex gap-1 justify-content-center">
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> View</a>
+                                    {% if e.can_compare %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}/comparison" class="btn btn-sm btn-success"><i class="bi bi-bar-chart"></i> Compare</a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ══ COMPLETED / ARCHIVED ════════════════════════════ -->
+    {% if archived_items %}
+    <div class="card shadow-sm border-0 rounded-4 border-light">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center py-3"
+             style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#archiveCollapse">
+            <h5 class="fw-semibold mb-0 text-muted">
+                <i class="bi bi-archive me-1"></i> Completed &amp; Cancelled
+            </h5>
+            <span class="badge bg-secondary">{{ archived_items|length }} <i class="bi bi-chevron-down ms-1"></i></span>
+        </div>
+        <div id="archiveCollapse" class="collapse">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Number</th>
+                                <th>Project / Site</th>
+                                <th>Stage</th>
+                                <th>RFQ</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in archived_items %}
+                            <tr>
+                                <td>
+                                    {% if e.type == "requirement" %}
+                                    <strong class="small">{{ e.req.requirement_number }}</strong>
+                                    <div class="text-muted" style="font-size:0.72rem;">{{ e.req.requested_by }}</div>
+                                    {% else %}
+                                    <strong class="small">{{ e.rfq.rfq_number }}</strong>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if e.type == "requirement" %}
+                                    <div class="small">{{ e.req.project_name }}</div>
+                                    <div class="text-muted" style="font-size:0.72rem;">{{ e.req.site_name }}</div>
+                                    {% else %}
+                                    <div class="small">{{ e.rfq.project_name }}</div>
+                                    <div class="text-muted" style="font-size:0.72rem;">{{ e.rfq.site_name }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ e.stage_color }} opacity-75" style="font-size:0.7rem;">{{ e.stage_label }}</span>
+                                </td>
+                                <td class="small text-muted">
+                                    {% if e.rfq %}<a href="/dashboard/rfq/{{ e.rfq.id }}" class="text-decoration-none">{{ e.rfq.rfq_number }}</a>{% else %}—{% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if e.type == "requirement" %}
+                                    <a href="/dashboard/requirements/{{ e.req.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i> View</a>
+                                    {% else %}
+                                    <a href="/dashboard/rfq/{{ e.rfq.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i> View</a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -89,7 +89,7 @@ def quotation_details(
 
 
 from fastapi import Body
-from typing import Optional as _Optional
+from typing import Optional as _Optional, List as _List
 from pydantic import BaseModel as _BaseModel
 
 
@@ -99,6 +99,8 @@ class QuotationEditPayload(_BaseModel):
     grand_total: _Optional[float] = None
     freight_amount_total: _Optional[float] = None
     loading_unloading_total: _Optional[float] = None
+    validity_date: _Optional[str] = None
+    date_received: _Optional[str] = None
 
 
 @router.put("/{quotation_id}/edit")
@@ -122,7 +124,112 @@ def edit_quotation(
         quotation.freight_amount_total = payload.freight_amount_total
     if payload.loading_unloading_total is not None:
         quotation.loading_unloading_total = payload.loading_unloading_total
+    if payload.validity_date is not None:
+        from datetime import date as _date
+        try:
+            quotation.validity_date = _date.fromisoformat(payload.validity_date) if payload.validity_date else None
+        except Exception:
+            pass
+    if payload.date_received is not None:
+        from datetime import date as _date
+        try:
+            quotation.date_received = _date.fromisoformat(payload.date_received) if payload.date_received else quotation.date_received
+        except Exception:
+            pass
 
     db.commit()
     db.refresh(quotation)
     return {"success": True, "quotation_id": quotation.id}
+
+
+# ──────────────────────────────────────────────────
+# Approve quotation for comparison (PM action)
+# ──────────────────────────────────────────────────
+
+@router.put("/{quotation_id}/approve-comparison")
+def approve_for_comparison(
+    quotation_id: int,
+    db: Session = Depends(get_db)
+):
+    """Mark a quotation as approved for comparison by purchase manager.
+    Only approved quotations appear in the comparison matrix.
+    """
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    if not quotation.is_latest:
+        raise HTTPException(status_code=400, detail="Only the latest revision can be approved for comparison")
+    quotation.approved_for_comparison = True
+    db.commit()
+    return {"success": True, "quotation_id": quotation.id, "approved_for_comparison": True}
+
+
+@router.put("/{quotation_id}/unapprove-comparison")
+def unapprove_from_comparison(
+    quotation_id: int,
+    db: Session = Depends(get_db)
+):
+    """Remove a quotation from comparison (PM can pull it back for editing)."""
+    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    quotation.approved_for_comparison = False
+    db.commit()
+    return {"success": True, "quotation_id": quotation.id, "approved_for_comparison": False}
+
+
+# ──────────────────────────────────────────────────
+# Edit individual quotation line items
+# ──────────────────────────────────────────────────
+
+class QuotationItemEditPayload(_BaseModel):
+    brand_offered: _Optional[str] = None
+    total_item_amount: _Optional[float] = None
+    final_landed_rate: _Optional[float] = None
+    remarks: _Optional[str] = None
+    delivery_timeline: _Optional[str] = None
+    payment_terms: _Optional[str] = None
+
+
+@router.put("/{quotation_id}/items/{item_id}")
+def edit_quotation_item(
+    quotation_id: int,
+    item_id: int,
+    payload: QuotationItemEditPayload,
+    db: Session = Depends(get_db)
+):
+    """Edit a specific quotation line item (per-material details)."""
+    from app.models.quotation_item import QuotationItem
+    qi = db.query(QuotationItem).filter(
+        QuotationItem.id == item_id,
+        QuotationItem.quotation_id == quotation_id
+    ).first()
+    if not qi:
+        raise HTTPException(status_code=404, detail="Quotation item not found")
+
+    if payload.brand_offered is not None:
+        qi.brand_offered = payload.brand_offered
+    if payload.total_item_amount is not None:
+        qi.total_item_amount = payload.total_item_amount
+    if payload.final_landed_rate is not None:
+        qi.final_landed_rate = payload.final_landed_rate
+    if payload.remarks is not None:
+        qi.remarks = payload.remarks
+
+    # If total_item_amount updated but not final_landed_rate, recalculate per-unit rate
+    if payload.total_item_amount is not None and payload.final_landed_rate is None:
+        rfq_item = db.query(RFQItem).filter(RFQItem.id == qi.rfq_item_id).first()
+        if rfq_item and rfq_item.quantity and float(rfq_item.quantity) > 0:
+            qi.final_landed_rate = float(payload.total_item_amount) / float(rfq_item.quantity)
+
+    db.commit()
+    db.refresh(qi)
+    return {
+        "success": True,
+        "item_id": qi.id,
+        "brand_offered": qi.brand_offered,
+        "total_item_amount": float(qi.total_item_amount or 0),
+        "final_landed_rate": float(qi.final_landed_rate or 0),
+        "remarks": qi.remarks
+    }
+

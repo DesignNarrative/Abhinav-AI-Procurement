@@ -125,7 +125,7 @@ from app.services.rfq_whatsapp_service import generate_quotation_trigger_message
 trig=generate_quotation_trigger_message("RFQ-2026-033")
 test("Trigger message generated", bool(trig))
 test("Trigger has RFQ number", "RFQ-2026-033" in trig)
-test("Trigger has QUOTE", "QUOTE" in trig)
+test("Trigger has Quote", "Quote" in trig)
 msg=generate_rfq_whatsapp_message(rfq_number="RFQ-TEST",project_name="P",site_name="S",delivery_location="Pune",payment_terms="30d",
     items=[{"material_name":"Cement","quantity":100,"unit":"bags","brand_required":None,"dynamic_fields":{},"remarks":None,"material_category":None}])
 test("RFQ message generated", bool(msg))

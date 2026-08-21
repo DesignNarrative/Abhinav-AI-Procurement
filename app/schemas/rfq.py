@@ -95,6 +95,7 @@ class RFQPreviewRequest(BaseModel):
     deadline: Optional[str] = None
     contact_person: Optional[str] = None
     contact_number: Optional[str] = None
+    purchase_team_number: Optional[str] = None
 
 
 class RFQResponse(BaseModel):

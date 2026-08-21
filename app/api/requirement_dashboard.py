@@ -31,52 +31,9 @@ def requirement_management(
     search: str = "",
     status: str = ""
 ):
-    from app.models.rfq import RFQ
-    from app.models.rfq_vendor import RFQVendor
-    from app.models.quotation import Quotation
+    """Requirements list is now the unified Procurement Tracker page."""
+    return RedirectResponse(url="/dashboard/procurement/", status_code=302)
 
-    requirements = RequirementService.get_all_requirements(
-        db=db,
-        search=search,
-        status=status
-    )
-
-    # Enrich each requirement with linked RFQ summary
-    enriched_requirements = []
-    for req in requirements:
-        rfq = db.query(RFQ).filter(RFQ.requirement_id == req.id).first()
-        vendor_count = 0
-        quote_count = 0
-        if rfq:
-            vendor_count = db.query(RFQVendor).filter(RFQVendor.rfq_id == rfq.id).count()
-            quote_count = db.query(Quotation).filter(
-                Quotation.rfq_id == rfq.id,
-                Quotation.is_latest == True
-            ).count()
-        enriched_requirements.append({
-            "req": req,
-            "rfq": rfq,
-            "vendor_count": vendor_count,
-            "quote_count": quote_count,
-            "can_compare": quote_count >= 2
-        })
-
-    # Separate active vs cold requirements
-    active_statuses = {"DRAFT", "SUBMITTED", "RFQ_SENT"}
-    active = [e for e in enriched_requirements if e["req"].status in active_statuses]
-    cold = [e for e in enriched_requirements if e["req"].status not in active_statuses]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="requirement_management.html",
-        context={
-            "request": request,
-            "active_requirements": active,
-            "cold_requirements": cold,
-            "search": search,
-            "status": status
-        }
-    )
 
 
 # =====================================================

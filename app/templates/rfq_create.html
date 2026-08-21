@@ -23,15 +23,11 @@
             </div>
             <div class="card-body">
                 <div class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label fw-semibold">Project Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="project_name" placeholder="e.g. Pebbles Business Bay" required>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Site Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="site_name" placeholder="e.g. Wakad Site" required>
-                    </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label fw-semibold">Delivery Location <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="delivery_location" placeholder="e.g. Bhugaon, Wakad" required>
                     </div>
@@ -46,16 +42,8 @@
                         </datalist>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">Created By <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="created_by" placeholder="e.g. Avdhut Sir" required>
-                    </div>
-                    <div class="col-md-4">
                         <label class="form-label fw-semibold">Required Date</label>
                         <input type="date" class="form-control" id="required_date">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label fw-semibold">Purpose</label>
-                        <textarea class="form-control" id="purpose" rows="2" placeholder="Why is this material required? (optional)"></textarea>
                     </div>
                 </div>
             </div>
@@ -145,17 +133,28 @@
             </div>
             <div class="card-body">
                 <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Quotation Deadline</label>
-                        <input type="text" class="form-control" id="deadline" placeholder="e.g. 5:00 PM Today, 10-Jul-2026">
-                    </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label fw-semibold">Site Contact Person</label>
                         <input type="text" class="form-control" id="contact_person" placeholder="e.g. Mr. Avdhut Chakradhar">
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label fw-semibold">Site Contact Number</label>
-                        <input type="text" class="form-control" id="contact_number" placeholder="e.g. 7219550051">
+                        <input type="text" class="form-control" id="contact_number" placeholder="e.g. 8888888888">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Section 4.5: Purchase Team Signature Details ── -->
+        <div class="card shadow-sm border-0 rounded-4 mb-4">
+            <div class="card-header bg-white">
+                <h5 class="fw-bold mb-0"><i class="bi bi-person-badge text-primary me-2"></i>Purchase Team</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Purchase Team Contact Number</label>
+                        <input type="text" class="form-control" id="purchase_team_number" placeholder="e.g. 7219550051">
                     </div>
                 </div>
             </div>
@@ -193,36 +192,7 @@ Click "Preview Message" after filling the form to see the WhatsApp message.</pre
     <div class="item-block border rounded-4 p-3 mb-3 position-relative">
         <button type="button" class="btn-close position-absolute top-0 end-0 m-2 remove-item-btn"></button>
         <div class="row g-2">
-            <div class="col-md-3">
-                <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
-                <input type="text" class="form-control item-category" placeholder="e.g. Steel, Cement, Electrical, Tiles..." list="categoryList">
-                <datalist id="categoryList">
-                    <option value="Steel (TMT)">
-                    <option value="Cement">
-                    <option value="Bricks / Blocks">
-                    <option value="Electrical">
-                    <option value="Plumbing / Pipes">
-                    <option value="Hardware">
-                    <option value="Chemicals">
-                    <option value="Tiles / Flooring">
-                    <option value="Waterproofing">
-                    <option value="Structural Steel">
-                    <option value="Concrete / RMC">
-                    <option value="Safety Equipment">
-                    <option value="Glass / Glazing">
-                    <option value="Painting / Coatings">
-                    <option value="Wood / Timber">
-                    <option value="Roofing">
-                    <option value="HVAC">
-                    <option value="Lifts / Elevators">
-                    <option value="Fire Fighting">
-                    <option value="Landscaping">
-                    <option value="Furniture">
-                    <option value="IT / AV Equipment">
-                    <option value="Other">
-                </datalist>
-            </div>
-            <div class="col-md-4">
+            <div class="col-md-7">
                 <label class="form-label fw-semibold">Material Name <span class="text-danger">*</span></label>
                 <input type="text" class="form-control item-material" placeholder="e.g. Fe550D TMT Bar, OPC 53 Cement...">
             </div>
@@ -252,8 +222,8 @@ Click "Preview Message" after filling the form to see the WhatsApp message.</pre
                     placeholder="e.g. Grade: Fe550D, Sizes: 8mm 10mm 12mm, Chemical Guarantee: Yes, Colour: Blue, Pressure Rating: 10 Bar">
             </div>
             <div class="col-12">
-                <label class="form-label fw-semibold">Remarks / Special Instructions</label>
-                <input type="text" class="form-control item-remarks" placeholder="Any additional notes...">
+                <label class="form-label fw-semibold">Purpose</label>
+                <input type="text" class="form-control item-remarks" placeholder="Purpose / additional notes...">
             </div>
         </div>
     </div>
@@ -380,45 +350,47 @@ function parseSpecs(specsString) {
 function collectFormData() {
     const items = [];
     document.querySelectorAll('.item-block').forEach(block => {
-        const cat = block.querySelector('.item-category').value.trim();
         const mat = block.querySelector('.item-material').value.trim();
         const qty = parseFloat(block.querySelector('.item-qty').value);
         const unit = block.querySelector('.item-unit').value.trim();
-        if (!cat || !mat || !qty || !unit) return;
+        if (!mat || !qty || !unit) return;
 
         const brand = block.querySelector('.item-brand').value.trim();
         const specsRaw = block.querySelector('.item-specs').value.trim();
         const remarks = block.querySelector('.item-remarks').value.trim();
         const dynamic_fields = parseSpecs(specsRaw);
 
-        items.push({ material_category: cat, material_name: mat, quantity: qty, unit, brand_required: brand || null, dynamic_fields, remarks: remarks || null });
+        items.push({ material_category: "General", material_name: mat, quantity: qty, unit, brand_required: brand || null, dynamic_fields, remarks: remarks || null });
     });
 
     const selectedVendors = Array.from(document.querySelectorAll('.vendor-checkbox:checked')).map(cb => parseInt(cb.value));
 
+    const projName = document.getElementById('project_name').value.trim();
+
     return {
         rfq: {
-            project_name: document.getElementById('project_name').value.trim(),
-            site_name: document.getElementById('site_name').value.trim(),
+            project_name: projName,
+            site_name: projName,
             delivery_location: document.getElementById('delivery_location').value.trim(),
             payment_terms: document.getElementById('payment_terms').value.trim() || null,
-            created_by: document.getElementById('created_by').value.trim(),
+            created_by: "Purchase Team",
             priority: null,
             required_date: document.getElementById('required_date').value.trim() || null,
-            purpose: document.getElementById('purpose').value.trim() || null
+            purpose: null
         },
         items,
         vendor_ids: selectedVendors,
-        deadline: document.getElementById('deadline').value.trim() || null,
+        deadline: null,
         contact_person: document.getElementById('contact_person').value.trim() || null,
-        contact_number: document.getElementById('contact_number').value.trim() || null
+        contact_number: document.getElementById('contact_number').value.trim() || null,
+        purchase_team_number: document.getElementById('purchase_team_number').value.trim() || null
     };
 }
 
 async function submitRFQ(sendNow = false) {
     const data = collectFormData();
-    if (!data.rfq.project_name || !data.rfq.site_name || !data.rfq.delivery_location || !data.rfq.created_by) {
-        alert('Please fill all mandatory fields (Project Name, Site Name, Delivery Location, Created By).');
+    if (!data.rfq.project_name || !data.rfq.delivery_location) {
+        alert('Please fill all mandatory fields (Project Name, Delivery Location).');
         return;
     }
     if (data.items.length === 0) {
@@ -451,6 +423,7 @@ async function submitRFQ(sendNow = false) {
         if (data.deadline) params.set('deadline', data.deadline);
         if (data.contact_person) params.set('contact_person', data.contact_person);
         if (data.contact_number) params.set('contact_number', data.contact_number);
+        if (data.purchase_team_number) params.set('purchase_team_number', data.purchase_team_number);
         const sendRes = await fetch(`/rfqs/${rfq.id}/send?${params}`, { method: 'POST' });
         const result = await sendRes.json();
         console.log('Send result:', result);
@@ -491,7 +464,8 @@ document.getElementById('previewBtn').addEventListener('click', async () => {
                 items: data.items,
                 deadline: data.deadline,
                 contact_person: data.contact_person,
-                contact_number: data.contact_number
+                contact_number: data.contact_number,
+                purchase_team_number: data.purchase_team_number
             })
         });
         if (!res.ok) {
@@ -507,6 +481,17 @@ document.getElementById('previewBtn').addEventListener('click', async () => {
         previewEl.textContent = 'Failed to load preview: ' + e.message;
     }
 });
+
+// Prefill and persist purchase team number across page loads
+const purchaseTeamNumInput = document.getElementById('purchase_team_number');
+if (purchaseTeamNumInput) {
+    const savedNum = localStorage.getItem('purchase_team_phone') || '7219550051';
+    purchaseTeamNumInput.value = savedNum;
+    
+    purchaseTeamNumInput.addEventListener('input', function() {
+        localStorage.setItem('purchase_team_phone', this.value.trim());
+    });
+}
 
 updateNoItemsMsg();
 </script>

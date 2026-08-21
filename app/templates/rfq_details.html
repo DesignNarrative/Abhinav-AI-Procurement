@@ -181,26 +181,7 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                 </div>
             </div>
 
-            <!-- Negotiation Card -->
-            <div class="card shadow-sm border-0 rounded-4 mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h5 class="fw-bold mb-0"><i class="bi bi-chat-square-dots text-warning me-2"></i>Negotiation</h5>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-primary" id="negoSuggestBtn">
-                            <i class="bi bi-stars me-1"></i> AI Suggestions
-                        </button>
-                        <button class="btn btn-sm btn-warning" id="addNegoBtn">
-                            <i class="bi bi-plus-circle me-1"></i> Add Round
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div id="negoSuggestions" class="d-none mb-3"></div>
-                    <div id="negoTimeline">
-                        <p class="text-muted small mb-0">Loading negotiation history...</p>
-                    </div>
-                </div>
-            </div>
+
         </div>
 
         <!-- Right Column: Vendors + Status -->
@@ -265,8 +246,11 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                 </div>
             </div>
 
-            <!-- Vendors Card -->
-            <div class="card shadow-sm border-0 rounded-4">
+            </div>
+            </div>
+
+            <!-- ── VENDORS NOTIFIED ──────────────────────────── -->
+            <div class="card shadow-sm border-0 rounded-4 mt-4">
                 <div class="card-header bg-white">
                     <h5 class="fw-bold mb-0"><i class="bi bi-people text-primary me-2"></i>Vendors Notified</h5>
                 </div>
@@ -287,22 +271,15 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                             {% endif %}
                         </div>
                         {% if ev.rv.whatsapp_status and ev.rv.whatsapp_status.startswith("Failed") %}
-                            <div class="text-danger small mt-1 fw-semibold" style="font-size: 0.72rem;">
-                                <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ ev.rv.whatsapp_status }}
-                            </div>
+                        <div class="text-danger small mt-1 fw-semibold" style="font-size:0.72rem;">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ ev.rv.whatsapp_status }}
+                        </div>
                         {% endif %}
                         <div class="mt-2">
-                            {% if ev.quotation %}
-                                <a href="/dashboard/quotation/{{ ev.quotation.id }}" class="btn btn-sm btn-outline-info">
-                                    <i class="bi bi-eye"></i> View Quote (Rev {{ ev.quotation.revision_number }})
-                                </a>
-                                <a href="/dashboard/quotation/create?rfq_id={{ rfq.id }}&vendor_id={{ ev.vendor.id }}" class="btn btn-sm btn-outline-primary ms-1">
-                                    <i class="bi bi-pencil"></i> Revise
-                                </a>
-                            {% else %}
-                                <a href="/dashboard/quotation/create?rfq_id={{ rfq.id }}&vendor_id={{ ev.vendor.id }}" class="btn btn-sm btn-primary">
-                                    <i class="bi bi-receipt"></i> Log Quotation
-                                </a>
+                            {% if not ev.quotation %}
+                            <a href="/dashboard/quotation/create?rfq_id={{ rfq.id }}&vendor_id={{ ev.vendor.id }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-receipt"></i> Log Quotation
+                            </a>
                             {% endif %}
                         </div>
                     </div>
@@ -311,6 +288,118 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
                     {% endfor %}
                 </div>
             </div>
+
+            <!-- ── QUOTATIONS RECEIVED ───────────────────────────── -->
+            {% set has_any_quote = enriched_vendors | selectattr("quotation") | list %}
+            {% if has_any_quote %}
+            <div class="card shadow-sm border-0 rounded-4 mt-4" id="quotationsSection">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0">
+                        <i class="bi bi-chat-quote text-info me-2"></i>Quotations Received
+                    </h5>
+                    <span class="badge bg-info">{{ has_any_quote|length }}</span>
+                </div>
+                <div class="card-body p-3">
+                    {% for ev in enriched_vendors %}
+                    {% if ev.quotation %}
+                    {% set q = ev.quotation %}
+                    <div class="border rounded-4 p-3 mb-3 {% if q.approved_for_comparison %}border-success bg-light{% else %}border-secondary{% endif %}" id="qcard-{{ q.id }}">
+                        <!-- Quotation header row -->
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <div class="fw-bold">{{ ev.vendor.company_name if ev.vendor else "Unknown" }}</div>
+                                <div class="text-muted small">
+                                    {{ q.quotation_number }} &nbsp;&middot;&nbsp; Rev {{ q.revision_number }}
+                                    &nbsp;&middot;&nbsp; {{ q.creation_source }}
+                                    {% if q.date_received %}&nbsp;&middot;&nbsp; {{ q.date_received }}{% endif %}
+                                </div>
+                            </div>
+                            <div class="d-flex gap-1 align-items-center flex-wrap justify-content-end">
+                                {% if q.approved_for_comparison %}
+                                <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>In Comparison</span>
+                                <button class="btn btn-sm btn-outline-warning unapprove-btn" data-qid="{{ q.id }}" title="Remove from Comparison">
+                                    <i class="bi bi-x-circle"></i> Remove
+                                </button>
+                                {% else %}
+                                <span class="badge bg-secondary">Pending Review</span>
+                                <button class="btn btn-sm btn-success approve-btn" data-qid="{{ q.id }}" title="Send to Comparison">
+                                    <i class="bi bi-send-check"></i> Send to Comparison
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-sm btn-outline-primary edit-quote-btn" 
+                                        data-qid="{{ q.id }}" 
+                                        data-vendor-name="{{ ev.vendor.company_name if ev.vendor else 'Unknown' }}"
+                                        data-payment-terms="{{ q.payment_terms or '' }}"
+                                        data-delivery-timeline="{{ q.delivery_timeline or '' }}"
+                                        data-validity-date="{{ q.validity_date or '' }}"
+                                        data-items='[{% for item in q.items %}{"id": {{ item.id }}, "material_name": {{ item.rfq_item.material_name|tojson }}, "qty": "{{ item.rfq_item.quantity }}", "unit": "{{ item.rfq_item.unit or "" }}", "brand_offered": {{ (item.brand_offered or "")|tojson }}, "total_price": {{ item.total_item_amount or 0 }}, "remarks": {{ (item.remarks or "")|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]'
+                                        title="Edit Quotation">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <a href="/dashboard/quotation/{{ q.id }}" class="btn btn-sm btn-outline-secondary" title="Full Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Commercial summary -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-3 col-6">
+                                <div class="text-muted small">Grand Total</div>
+                                <div class="fw-bold text-primary">₹{{ "{:,.0f}".format(q.grand_total or 0) }}</div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="text-muted small">Payment Terms</div>
+                                <div class="small fw-semibold" id="qpt-{{ q.id }}">{{ q.payment_terms or "—" }}</div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="text-muted small">Delivery</div>
+                                <div class="small fw-semibold" id="qdt-{{ q.id }}">{{ q.delivery_timeline or "—" }}</div>
+                            </div>
+                            <div class="col-md-3 col-6">
+                                <div class="text-muted small">Validity</div>
+                                <div class="small">{{ q.validity_date or "—" }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Per-material line items table -->
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:0.8rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Material</th>
+                                        <th>Qty</th>
+                                        <th>Brand Offered</th>
+                                        <th>Total Price (All-incl.)</th>
+                                        <th>Per-Unit Rate</th>
+                                        <th>Remarks</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in q.items %}
+                                    {% set ri = item.rfq_item %}
+                                    <tr id="qi-row-{{ item.id }}">
+                                        <td class="fw-semibold">{{ ri.material_name if ri else "—" }}</td>
+                                        <td class="text-muted">{{ ri.quantity if ri else "—" }} {{ ri.unit if ri else "" }}</td>
+                                        <td id="qi-brand-{{ item.id }}">{{ item.brand_offered or "—" }}</td>
+                                        <td class="fw-bold">₹{{ "{:,.0f}".format(item.total_item_amount or 0) }}</td>
+                                        <td>₹{{ "{:,.2f}".format(item.final_landed_rate or 0) }}</td>
+                                        <td class="text-muted small fst-italic" id="qi-remarks-{{ item.id }}">{{ item.remarks or "—" }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="6" class="text-muted text-center small">No line items saved</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div><!-- /table-responsive -->
+                    </div><!-- /qcard -->
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div><!-- /quotationsSection -->
+            {% endif %}
+
+
 
             <!-- Add / Resend Vendors (always visible) -->
             <div class="card shadow-sm border-0 rounded-4 mt-4">
@@ -367,83 +456,44 @@ Click "Load Preview" to see the WhatsApp message that was / will be sent.</pre>
     </div>
 </div>
 
-<!-- Negotiation Round Modal -->
-<div class="modal fade" id="negoModal" tabindex="-1">
+<!-- Unified Edit Quotation Modal -->
+<div class="modal fade" id="unifiedEditModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-chat-square-dots text-warning me-2"></i>Record Negotiation Round</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title"><i class="bi bi-pencil-square text-primary me-2"></i>Edit Quotation: <span id="ue-vendor-name"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Vendor</label>
-                        <select class="form-select" id="negoVendor">
-                            {% for ev in enriched_vendors %}
-                            {% if ev.vendor %}
-                            <option value="{{ ev.vendor.id }}"
-                                    data-quotation-id="{{ ev.quotation.id if ev.quotation else '' }}"
-                                    data-grand-total="{{ ev.quotation.grand_total if ev.quotation else '' }}">
-                                {{ ev.vendor.company_name }}
-                            </option>
-                            {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Channel</label>
-                        <select class="form-select" id="negoChannel">
-                            <option value="Call">Call</option>
-                            <option value="WhatsApp">WhatsApp</option>
-                            <option value="Email">Email</option>
-                            <option value="In Person">In Person</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Vendor's Price (₹)</label>
-                        <input type="number" step="0.01" class="form-control" id="negoOriginal" placeholder="Current quoted total">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Our Counter (₹)</label>
-                        <input type="number" step="0.01" class="form-control" id="negoCounter" placeholder="Target price">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Agreed Price (₹)</label>
-                        <input type="number" step="0.01" class="form-control" id="negoAgreed" placeholder="If settled">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Outcome</label>
-                        <select class="form-select" id="negoOutcome">
-                            <option value="Pending">Pending</option>
-                            <option value="Agreed">Agreed</option>
-                            <option value="Rejected">Rejected</option>
-                            <option value="Revised Quotation Expected">Revised Quotation Expected</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Recorded By</label>
-                        <input type="text" class="form-control" id="negoCreatedBy" placeholder="Your name">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label fw-semibold">Summary / Notes</label>
-                        <textarea class="form-control" id="negoSummary" rows="2" placeholder="e.g. Asked for 5% discount on cement, vendor to revert by tomorrow"></textarea>
-                    </div>
-                    <div class="col-12">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="negoSendWa">
-                            <label class="form-check-label fw-semibold" for="negoSendWa">
-                                <i class="bi bi-whatsapp text-success me-1"></i>Send counter-offer to vendor on WhatsApp
-                            </label>
+                <!-- Quotation Header Fields -->
+                <div class="card bg-light border-0 p-3 mb-3 rounded-4">
+                    <h6 class="fw-bold mb-2 small text-uppercase text-secondary">1. Quotation Header Details</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">Payment Terms</label>
+                            <input type="text" class="form-control form-control-sm" id="ue-payment-terms" placeholder="e.g. 30 days credit">
                         </div>
-                        <textarea class="form-control mt-2 d-none" id="negoWaMessage" rows="4"></textarea>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">Delivery Timeline</label>
+                            <input type="text" class="form-control form-control-sm" id="ue-delivery" placeholder="e.g. Immediate">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold">Validity Date</label>
+                            <input type="date" class="form-control form-control-sm" id="ue-validity">
+                        </div>
                     </div>
+                </div>
+
+                <!-- Quotation Item Fields -->
+                <h6 class="fw-bold mb-2 small text-uppercase text-secondary">2. Material Line Items</h6>
+                <div id="ue-items-container" class="border rounded-4 p-3 bg-white">
+                    <!-- Dynamic rows populated by JavaScript -->
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" id="saveNegoBtn">
-                    <i class="bi bi-check-circle me-1"></i> Save Round
+                <button type="button" class="btn btn-primary" id="ue-save-btn">
+                    <i class="bi bi-floppy me-1"></i>Save Changes
                 </button>
             </div>
         </div>
@@ -491,153 +541,7 @@ document.getElementById('updateStatusBtn').addEventListener('click', async () =>
     }
 });
 
-// ===================== Negotiation =====================
-const negoModalEl = document.getElementById('negoModal');
-const negoModal = negoModalEl ? new bootstrap.Modal(negoModalEl) : null;
-
-function fmtMoney(v) {
-    if (v === null || v === undefined) return '-';
-    return '₹' + Number(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-}
-
-async function loadNegotiations() {
-    const el = document.getElementById('negoTimeline');
-    try {
-        const res = await fetch(`/rfqs/${rfqId}/negotiations`);
-        const data = await res.json();
-        const rounds = data.rounds || [];
-        if (rounds.length === 0) {
-            el.innerHTML = '<p class="text-muted small mb-0">No negotiation rounds recorded yet.</p>';
-            return;
-        }
-        const outcomeBadge = (o) => {
-            if (o === 'Agreed') return 'bg-success';
-            if (o === 'Rejected') return 'bg-danger';
-            if (o === 'Revised Quotation Expected') return 'bg-info text-dark';
-            return 'bg-secondary';
-        };
-        el.innerHTML = rounds.map(r => `
-            <div class="border-start border-3 border-warning ps-3 pb-3 mb-2">
-                <div class="d-flex justify-content-between">
-                    <div class="fw-semibold small">${r.vendor_name || 'Vendor'} · Round ${r.round_number}
-                        <span class="badge bg-light text-dark border ms-1">${r.channel}</span>
-                    </div>
-                    <span class="badge ${outcomeBadge(r.outcome)}">${r.outcome}</span>
-                </div>
-                <div class="small text-muted">
-                    ${r.original_price != null ? 'Their: ' + fmtMoney(r.original_price) : ''}
-                    ${r.counter_price != null ? ' · Counter: ' + fmtMoney(r.counter_price) : ''}
-                    ${r.agreed_price != null ? ' · Agreed: ' + fmtMoney(r.agreed_price) : ''}
-                </div>
-                ${r.summary ? `<div class="small mt-1">${r.summary}</div>` : ''}
-                <div class="text-muted" style="font-size:0.75rem;">by ${r.created_by} · ${new Date(r.created_at).toLocaleString('en-IN')}</div>
-            </div>
-        `).join('');
-    } catch (e) {
-        el.innerHTML = '<p class="text-danger small mb-0">Failed to load negotiation history.</p>';
-    }
-}
-loadNegotiations();
-
-document.getElementById('negoSuggestBtn').addEventListener('click', async () => {
-    const box = document.getElementById('negoSuggestions');
-    box.classList.remove('d-none');
-    box.innerHTML = '<div class="text-muted small">Loading suggestions...</div>';
-    try {
-        const res = await fetch(`/rfqs/${rfqId}/negotiations/suggestions`);
-        const data = await res.json();
-        const items = data.items || [];
-        if (items.length === 0) {
-            box.innerHTML = '<div class="alert alert-light border small mb-0">No items to analyse.</div>';
-            return;
-        }
-        const rows = items.map(it => `
-            <tr>
-                <td class="small">${it.material_name}<div class="text-muted" style="font-size:0.72rem;">${it.quantity} ${it.unit}</div></td>
-                <td class="small text-center">${it.l1_rate != null ? fmtMoney(it.l1_rate) : '-'}<div class="text-muted" style="font-size:0.72rem;">${it.l1_vendor || ''}</div></td>
-                <td class="small text-center">${it.last_purchase_rate != null ? fmtMoney(it.last_purchase_rate) : '-'}<div class="text-muted" style="font-size:0.72rem;">${it.history_count} past</div></td>
-                <td class="small text-center fw-semibold text-success">${it.target_low != null ? fmtMoney(it.target_low) + ' – ' + fmtMoney(it.target_high) : '-'}</td>
-            </tr>
-        `).join('');
-        box.innerHTML = `
-            <div class="alert alert-primary border-0 p-2 mb-0">
-                <div class="fw-semibold small mb-2"><i class="bi bi-stars me-1"></i>Negotiation Targets (advisory)</div>
-                <div class="table-responsive">
-                <table class="table table-sm mb-1">
-                    <thead><tr class="small"><th>Material</th><th class="text-center">L1 Now</th><th class="text-center">Last Buy</th><th class="text-center">Target</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-                </div>
-                <div class="text-muted" style="font-size:0.72rem;">${data.note}</div>
-            </div>`;
-    } catch (e) {
-        box.innerHTML = '<div class="alert alert-danger small mb-0">Failed to load suggestions.</div>';
-    }
-});
-
-document.getElementById('negoSendWa').addEventListener('change', function () {
-    const ta = document.getElementById('negoWaMessage');
-    ta.classList.toggle('d-none', !this.checked);
-    if (this.checked && !ta.value.trim()) {
-        const counter = document.getElementById('negoCounter').value.trim();
-        ta.value = `Dear Vendor,\n\nThank you for your quotation against RFQ {{ rfq.rfq_number }}.\nWe request a revised best price` + (counter ? ` around ₹${counter}` : '') + `.\n\nRegards,\nAbhinav Group Purchase Team`;
-    }
-});
-
-document.getElementById('addNegoBtn').addEventListener('click', () => {
-    const opt = document.getElementById('negoVendor').selectedOptions[0];
-    if (opt && opt.dataset.grandTotal) {
-        document.getElementById('negoOriginal').value = opt.dataset.grandTotal;
-    }
-    negoModal.show();
-});
-
-const negoVendorEl = document.getElementById('negoVendor');
-if (negoVendorEl) {
-    negoVendorEl.addEventListener('change', function () {
-        const opt = this.selectedOptions[0];
-        document.getElementById('negoOriginal').value = opt && opt.dataset.grandTotal ? opt.dataset.grandTotal : '';
-    });
-}
-
-document.getElementById('saveNegoBtn').addEventListener('click', async () => {
-    const vendorSel = document.getElementById('negoVendor');
-    const vendorId = vendorSel.value ? parseInt(vendorSel.value) : null;
-    const createdBy = document.getElementById('negoCreatedBy').value.trim();
-    if (!vendorId) { alert('No vendor selected. Attach vendors first.'); return; }
-    if (!createdBy) { alert('Please enter who recorded this round.'); return; }
-
-    const opt = vendorSel.selectedOptions[0];
-    const quotationId = opt && opt.dataset.quotationId ? parseInt(opt.dataset.quotationId) : null;
-    const sendWa = document.getElementById('negoSendWa').checked;
-    const num = (id) => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
-
-    const res = await fetch(`/rfqs/${rfqId}/negotiations`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            vendor_id: vendorId,
-            quotation_id: quotationId,
-            channel: document.getElementById('negoChannel').value,
-            original_price: num('negoOriginal'),
-            counter_price: num('negoCounter'),
-            agreed_price: num('negoAgreed'),
-            summary: document.getElementById('negoSummary').value.trim() || null,
-            outcome: document.getElementById('negoOutcome').value,
-            created_by: createdBy,
-            send_whatsapp: sendWa,
-            whatsapp_message: sendWa ? document.getElementById('negoWaMessage').value.trim() : null
-        })
-    });
-    if (res.ok) {
-        negoModal.hide();
-        alert('Negotiation round saved.');
-        window.location.reload();
-    } else {
-        const data = await res.json().catch(() => ({}));
-        alert(data.detail || 'Failed to save negotiation round.');
-    }
-});
+// ===================== Unified Edit Quotation =====================
 
 // ── Load approved vendors for Add/Resend panel (always visible) ──
 const vendorListEl = document.getElementById('approvedVendorList');
@@ -844,6 +748,186 @@ document.getElementById('addDiscoveredBtn').addEventListener('click', async () =
     } catch (e) {
         alert('Error: ' + e.message);
         btn.disabled = false;
+    }
+});
+
+// ── Quotation: Send to Comparison ──────────────────────────────────
+document.querySelectorAll('.approve-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const qid = btn.dataset.qid;
+        if (!confirm('Send this quotation to the Comparison Matrix? The PM has reviewed it.')) return;
+        btn.disabled = true;
+        const res = await fetch(`/dashboard/quotation/${qid}/approve-comparison`, { method: 'PUT' });
+        if (res.ok) {
+            alert('✅ Quotation approved for comparison.');
+            window.location.reload();
+        } else {
+            const d = await res.json().catch(() => ({}));
+            alert(d.detail || 'Failed to approve.');
+            btn.disabled = false;
+        }
+    });
+});
+
+// ── Quotation: Remove from Comparison ─────────────────────────────
+document.querySelectorAll('.unapprove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const qid = btn.dataset.qid;
+        if (!confirm('Remove this quotation from comparison? You can re-add it after editing.')) return;
+        btn.disabled = true;
+        const res = await fetch(`/dashboard/quotation/${qid}/unapprove-comparison`, { method: 'PUT' });
+        if (res.ok) {
+            alert('Quotation removed from comparison.');
+            window.location.reload();
+        } else {
+            const d = await res.json().catch(() => ({}));
+            alert(d.detail || 'Failed.');
+            btn.disabled = false;
+        }
+    });
+});
+
+// ── Unified Quotation Editing Modal populator & save ──────────────────
+let _editingQid = null;
+let _editingItems = [];
+
+const unifiedEditModal = new bootstrap.Modal(document.getElementById('unifiedEditModal'));
+
+document.querySelectorAll('.edit-quote-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        _editingQid = btn.dataset.qid;
+        document.getElementById('ue-vendor-name').textContent = btn.dataset.vendorName;
+        document.getElementById('ue-payment-terms').value = btn.dataset.paymentTerms;
+        document.getElementById('ue-delivery').value = btn.dataset.deliveryTimeline;
+        
+        // Handle date formatting/prefill safely
+        let valDate = btn.dataset.validityDate || '';
+        if (valDate) {
+            // If date is in YYYY-MM-DD format, set value directly
+            const m = valDate.match(/^\d{4}-\d{2}-\d{2}/);
+            if (m) {
+                valDate = m[0];
+            } else {
+                valDate = '';
+            }
+        }
+        document.getElementById('ue-validity').value = valDate;
+
+        _editingItems = JSON.parse(btn.dataset.items);
+        const container = document.getElementById('ue-items-container');
+        container.innerHTML = '';
+
+        _editingItems.forEach((item, idx) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'item-edit-row border-bottom pb-3 mb-3';
+            if (idx === _editingItems.length - 1) {
+                itemDiv.classList.remove('border-bottom', 'pb-3', 'mb-3');
+            }
+            itemDiv.innerHTML = `
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-12 mb-1">
+                        <div class="fw-bold text-dark small">${item.material_name} &mdash; ${item.qty} ${item.unit}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Brand Offered</label>
+                        <input type="text" class="form-control form-control-sm item-brand-input" data-iid="${item.id}" value="${item.brand_offered || ''}" placeholder="e.g. Asian Paints">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Total Price (₹)</label>
+                        <input type="number" step="0.01" class="form-control form-control-sm item-price-input" data-iid="${item.id}" value="${item.total_price || 0}" placeholder="Total all-inclusive">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted mb-1">Remarks</label>
+                        <input type="text" class="form-control form-control-sm item-remarks-input" data-iid="${item.id}" value="${item.remarks || ''}" placeholder="Optional notes">
+                    </div>
+                </div>
+            `;
+            container.appendChild(itemDiv);
+        });
+
+        unifiedEditModal.show();
+    });
+});
+
+document.getElementById('ue-save-btn').addEventListener('click', async () => {
+    if (!_editingQid) return;
+    const saveBtn = document.getElementById('ue-save-btn');
+    saveBtn.disabled = true;
+    
+    // 1. Gather all line item updates and calculate computed grand total
+    let calculatedGrandTotal = 0;
+    const itemPromises = [];
+    
+    const brandInputs = document.querySelectorAll('.item-brand-input');
+    const priceInputs = document.querySelectorAll('.item-price-input');
+    const remarksInputs = document.querySelectorAll('.item-remarks-input');
+    
+    for (let i = 0; i < _editingItems.length; i++) {
+        const item = _editingItems[i];
+        const iid = item.id;
+        
+        let brandVal = '';
+        let priceVal = 0;
+        let remarksVal = '';
+        
+        brandInputs.forEach(input => { if (parseInt(input.dataset.iid) === iid) brandVal = input.value.trim(); });
+        priceInputs.forEach(input => { if (parseInt(input.dataset.iid) === iid) priceVal = parseFloat(input.value) || 0; });
+        remarksInputs.forEach(input => { if (parseInt(input.dataset.iid) === iid) remarksVal = input.value.trim(); });
+        
+        calculatedGrandTotal += priceVal;
+        
+        const itemPayload = {
+            brand_offered: brandVal || null,
+            total_item_amount: priceVal,
+            remarks: remarksVal || null
+        };
+        
+        itemPromises.push(
+            fetch(`/dashboard/quotation/${_editingQid}/items/${iid}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemPayload)
+            })
+        );
+    }
+    
+    // 2. Gather header updates
+    const headerPayload = {
+        payment_terms: document.getElementById('ue-payment-terms').value.trim() || null,
+        delivery_timeline: document.getElementById('ue-delivery').value.trim() || null,
+        validity_date: document.getElementById('ue-validity').value || null,
+        grand_total: calculatedGrandTotal
+    };
+    
+    const headerPromise = fetch(`/dashboard/quotation/${_editingQid}/edit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(headerPayload)
+    });
+    
+    try {
+        const responses = await Promise.all([headerPromise, ...itemPromises]);
+        
+        let allOk = true;
+        for (const res of responses) {
+            if (!res.ok) {
+                allOk = false;
+                const err = await res.json().catch(() => ({}));
+                alert('Error updating: ' + (err.detail || 'API failed'));
+                break;
+            }
+        }
+        
+        if (allOk) {
+            unifiedEditModal.hide();
+            alert('✅ Quotation fully updated.');
+            window.location.reload();
+        } else {
+            saveBtn.disabled = false;
+        }
+    } catch (e) {
+        alert('Failed to save changes: ' + e.message);
+        saveBtn.disabled = false;
     }
 });
 </script>

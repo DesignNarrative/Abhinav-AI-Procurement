@@ -27,16 +27,10 @@ def rfq_management(
     status: str = "",
     db: Session = Depends(get_db)
 ):
-    rfqs = RFQService.list_rfqs(db, status=status if status else None)
-    return templates.TemplateResponse(
-        request=request,
-        name="rfq_management.html",
-        context={
-            "request": request,
-            "rfqs": rfqs,
-            "status_filter": status
-        }
-    )
+    """RFQ list is now the unified Procurement Tracker page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard/procurement/", status_code=302)
+
 
 
 @router.get("/create", response_class=HTMLResponse)

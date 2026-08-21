@@ -6,7 +6,8 @@ from sqlalchemy import (
     Boolean,
     Numeric,
     ForeignKey,
-    Date
+    Date,
+    Text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -23,6 +24,7 @@ class Quotation(Base):
     vendor_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
     
     is_latest = Column(Boolean, default=True, nullable=False)
+    approved_for_comparison = Column(Boolean, default=False, nullable=False)
     
     date_received = Column(Date, nullable=False)
     validity_date = Column(Date, nullable=True)
